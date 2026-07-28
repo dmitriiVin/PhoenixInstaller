@@ -7,35 +7,43 @@ constexpr float Radius = 10.0f;
 constexpr float Padding = 16.0f;
 } // namespace
 
-bool Card::Begin(const char *id, float height, bool selected) {
-    ImVec2 size(ImGui::GetContentRegionAvail().x, height);
+void Card::Begin(const char *id, bool selected) {
+    s_State.Selected = selected;
 
-    bool clicked = ImGui::InvisibleButton(id, size);
+    ImGui::PushID(id);
 
-    bool hovered = ImGui::IsItemHovered();
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, Radius);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(Padding, Padding));
 
-    ImVec2 min = ImGui::GetItemRectMin();
-    ImVec2 max = ImGui::GetItemRectMax();
+    ImVec4 bg = selected ? ImVec4(0.18f, 0.44f, 0.77f, 1.0f) : ImGui::GetStyleColorVec4(ImGuiCol_FrameBg);
 
-    ImDrawList *draw = ImGui::GetWindowDrawList();
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
+    ImGui::PushStyleColor(ImGuiCol_Border, ImGui::GetStyleColorVec4(ImGuiCol_Border));
 
-    ImU32 background = IM_COL32(38, 38, 38, 255);
-
-    if (selected)
-        background = IM_COL32(46, 112, 196, 255);
-    else if (hovered)
-        background = IM_COL32(55, 55, 55, 255);
-
-    draw->AddRectFilled(min, max, background, Radius);
-    draw->AddRect(min, max, IM_COL32(80, 80, 80, 255), Radius);
-
-    ImGui::SetCursorScreenPos({min.x + Padding, min.y + Padding});
-
-    ImGui::BeginGroup();
-
-    return clicked;
+    ImGui::BeginChild("##card", ImVec2(0, 0), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_Borders);
 }
 
-void Card::End() {
-    ImGui::EndGroup();
+bool Card::End() {
+    ImGui::EndChild();
+
+    bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+
+    bool clicked = hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGui::IsMouseDragging(ImGuiMouseButton_Left);
+
+    if (!s_State.Selected && hovered) {
+        ImDrawList *draw = ImGui::GetWindowDrawList();
+
+        ImVec2 min = ImGui::GetItemRectMin();
+        ImVec2 max = ImGui::GetItemRectMax();
+
+        draw->AddRectFilled(min, max, IM_COL32(255, 255, 255, 18), Radius);
+    }
+
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar(3);
+
+    ImGui::PopID();
+
+    return clicked;
 }

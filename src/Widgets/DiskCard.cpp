@@ -6,11 +6,31 @@
 #include <cstdio>
 #include <imgui.h>
 
-double DiskCard::ToGB(uint64_t bytes) {
-    return static_cast<double>(bytes) / (1024.0 * 1024.0 * 1024.0);
+namespace {
+
+std::string FormatSize(uint64_t bytes) {
+    constexpr double KB = 1024.0;
+    constexpr double MB = KB * 1024.0;
+    constexpr double GB = MB * 1024.0;
+    constexpr double TB = GB * 1024.0;
+
+    char buffer[32];
+
+    if (bytes >= static_cast<uint64_t>(TB))
+        std::snprintf(buffer, sizeof(buffer), "%.2f TB", bytes / TB);
+    else if (bytes >= static_cast<uint64_t>(GB))
+        std::snprintf(buffer, sizeof(buffer), "%.1f GB", bytes / GB);
+    else if (bytes >= static_cast<uint64_t>(MB))
+        std::snprintf(buffer, sizeof(buffer), "%.0f MB", bytes / MB);
+    else if (bytes >= static_cast<uint64_t>(KB))
+        std::snprintf(buffer, sizeof(buffer), "%.0f KB", bytes / KB);
+    else
+        std::snprintf(buffer, sizeof(buffer), "%llu B", static_cast<unsigned long long>(bytes));
+
+    return buffer;
 }
 
-const char *DiskCard::GetDiskType(const DiskInfo &disk) {
+const char *GetDiskType(const DiskInfo &disk) {
     switch (disk.BusType) {
     case DiskBusType::NVMe:
         return "NVMe SSD";
@@ -29,43 +49,76 @@ const char *DiskCard::GetDiskType(const DiskInfo &disk) {
     }
 }
 
+const char *GetPartitionType(const PartitionInfo &part) {
+    if (part.IsEFI)
+        return "EFI";
+
+    if (part.IsMSR)
+        return "MSR";
+
+    if (part.IsRecovery)
+        return "Recovery";
+
+    return "Data";
+}
+
+} // namespace
+
 bool DiskCard::Draw(const DiskInfo &disk, bool selected) {
     ImGui::PushID(disk.Number);
 
-    bool clicked = Card::Begin("DiskCard", 150.0f, selected);
+    Card::Begin("DiskCard", selected);
 
-    ImGui::Text("%s  %ls", ICON_FA_HARD_DRIVE, disk.Model.c_str());
+    // Заголовок
+    ImGui::Text("%s", ICON_FA_HARD_DRIVE);
+    ImGui::SameLine();
+    ImGui::Text("%ls", disk.Model.c_str());
 
     ImGui::Separator();
 
-    ImGui::Text("Disk %u", disk.Number);
-
-    ImGui::SameLine();
-
-    ImGui::TextDisabled("|");
-
-    ImGui::SameLine();
-
-    ImGui::Text("%s", GetDiskType(disk));
-
-    ImGui::SameLine();
-
-    ImGui::TextDisabled("|");
-
-    ImGui::SameLine();
-
-    ImGui::Text("%s", disk.IsGPT ? "GPT" : "MBR");
-
-    char buffer[32];
-    std::snprintf(buffer, sizeof(buffer), "%.1f GB", ToGB(disk.Size));
+    // Информация о диске
+    ImGui::Text("Disk %u  |  %s  |  %s  |  %s", disk.Number, GetDiskType(disk), disk.IsGPT ? "GPT" : "MBR", FormatSize(disk.Size).c_str());
 
     ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
 
-    ImGui::TextDisabled("Место на диске: ");
-    ImGui::SameLine();
-    ImGui::Text("%s", buffer);
+    if (disk.Partitions.empty()) {
+        ImGui::TextDisabled("No partitions");
+    }
+    else {
+        for (const auto &part : disk.Partitions) {
+            std::string title = GetPartitionType(part);
 
-    Card::End();
+            if (part.Letter) {
+                title += " (";
+                title += static_cast<char>(part.Letter);
+                title += ":)";
+            }
+
+            std::string size = FormatSize(part.Size);
+
+            ImGui::Bullet();
+            ImGui::SameLine();
+
+            ImGui::TextUnformatted(title.c_str());
+
+            if (!part.Label.empty()) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("[%ls]", part.Label.c_str());
+            }
+
+            ImVec2 textSize = ImGui::CalcTextSize(size.c_str());
+
+            float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+
+            ImGui::SameLine(right - ImGui::GetCursorScreenPos().x - textSize.x);
+
+            ImGui::TextDisabled("%s", size.c_str());
+        }
+    }
+
+    bool clicked = Card::End();
 
     ImGui::PopID();
 

@@ -8,6 +8,7 @@
 #include "UI/ImGuiManager.h"
 #include "UI/InstallPage.h"
 #include "UI/PageManager.h"
+#include "UI/ProgramPage.h"
 #include "UI/WelcomePage.h"
 
 class App {
@@ -34,4 +35,5 @@ class App {
 
     WelcomePage m_WelcomePage;
     InstallPage m_InstallPage;
+    ProgramPage m_ProgramPage;
 };

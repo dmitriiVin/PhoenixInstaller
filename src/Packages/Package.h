@@ -5,6 +5,7 @@
 struct Package {
     std::string Id;
     std::string Name;
+    std::string Description;
 
     std::string Folder;
     std::string Installer;

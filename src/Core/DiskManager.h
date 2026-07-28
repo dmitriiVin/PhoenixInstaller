@@ -7,4 +7,7 @@
 class DiskManager {
   public:
     static std::vector<DiskInfo> Enumerate();
+
+  private:
+    static void EnumeratePartitions(DiskInfo &disk);
 };

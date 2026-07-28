@@ -8,12 +8,16 @@
 using json = nlohmann::json;
 
 bool PackageManager::Load(const std::string &file) {
-    Clear();
-
     std::ifstream stream(file);
 
     if (!stream.is_open())
         return false;
+
+    return Load(stream);
+}
+
+bool PackageManager::Load(std::istream &stream) {
+    Clear();
 
     json root;
 
@@ -37,6 +41,7 @@ bool PackageManager::Load(const std::string &file) {
 
         package.Id = item.value("id", "");
         package.Name = item.value("name", "");
+        package.Description = item.value("description", "");
         package.Folder = item.value("folder", "");
         package.Installer = item.value("installer", "");
         package.Arguments = item.value("arguments", "");

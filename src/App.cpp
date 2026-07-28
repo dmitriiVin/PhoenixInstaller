@@ -8,12 +8,18 @@
 #include "UI/ImGuiManager.h"
 #include "UI/InstallPage.h"
 #include "UI/Theme/Theme.h"
+#include "Utils/ResourceManager.h"
+#include "resource.h"
+
+#include <filesystem>
+#include <sstream>
+#include <windows.h>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
 Renderer *App::s_Renderer = nullptr;
 
-App::App() : m_InstallPage(m_Context) {
+App::App() : m_InstallPage(m_Context), m_ProgramPage(m_Context) {
 }
 
 LRESULT CALLBACK App::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -56,7 +62,24 @@ bool App::Initialize() {
         return false;
     }
     Theme::Apply();
+
+    auto data = ResourceManager::Load(IDR_PACKAGES_JSON);
+
+    if (data.empty()) {
+        MessageBoxA(nullptr, "Failed to load packages resource.", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+
+    std::string json(data.begin(), data.end());
+    std::istringstream stream(json);
+
+    if (!m_Context.Packages.Load(stream)) {
+        MessageBoxA(nullptr, "Failed to parse packages.json", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+
     m_PageManager.SetPage(&m_WelcomePage);
+
     return true;
 }
 
@@ -70,6 +93,11 @@ void App::Run() {
         if (m_WelcomePage.NextRequested()) {
             m_WelcomePage.ResetState();
             m_PageManager.SetPage(&m_InstallPage);
+        }
+
+        if (m_InstallPage.NextRequested()) {
+            m_InstallPage.ResetState();
+            m_PageManager.SetPage(&m_ProgramPage);
         }
 
         m_ImGui.EndFrame();
