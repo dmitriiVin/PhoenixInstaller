@@ -21,12 +21,12 @@ void WelcomePage::Draw() {
     Texture *logo = TextureManager::Get(IDR_LOGO_PNG);
 
     if (logo) {
-        float logoHeight = Layout::Scale(128.0f); // было 48
+        float logoHeight = Layout::Scale(128.0f);
         float logoWidth = logoHeight * (static_cast<float>(logo->Width()) / logo->Height());
 
         ImGui::Image(logo->Get(), ImVec2(logoWidth, logoHeight));
 
-        ImGui::SameLine(0.0f, Layout::Scale(20.0f)); // было 16
+        ImGui::SameLine(0.0f, Layout::Scale(20.0f));
 
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (logoHeight - ImGui::GetTextLineHeight()) * 0.5f);
     }

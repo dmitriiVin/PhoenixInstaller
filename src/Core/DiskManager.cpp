@@ -237,14 +237,13 @@ void DiskManager::EnumeratePartitions(DiskInfo &disk) {
                 continue;
 
             part.Number = p.PartitionNumber;
+            part.Size = p.PartitionLength.QuadPart;
 
             if (layout->PartitionStyle == PARTITION_STYLE_GPT) {
                 const GUID &type = p.Gpt.PartitionType;
 
                 part.IsEFI = IsEqualGUID(type, kPartitionSystemGuid);
-
                 part.IsMSR = IsEqualGUID(type, kPartitionMsrGuid);
-
                 part.IsRecovery = IsEqualGUID(type, kPartitionRecoveryGuid);
             }
 
