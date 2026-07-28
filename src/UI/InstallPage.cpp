@@ -39,16 +39,34 @@ void InstallPage::Draw() {
         }
     }
 
+    const bool diskSelected = m_Context.SelectedDisk.has_value();
+
     Layout::Space(30);
 
-    const bool diskSelected = m_Context.SelectedDisk.has_value();
+    ImGui::Separator();
+    Layout::Space(15);
+
+    constexpr float buttonWidth = 180.0f;
+    constexpr float buttonHeight = 45.0f;
+
+    // Назад
+    if (ImGui::Button("Назад", ImVec2(buttonWidth, buttonHeight))) {
+        m_BackRequested = true;
+    }
+
+    // Далее справа
+    float right = ImGui::GetContentRegionAvail().x - buttonWidth;
+
+    if (right > 0.0f)
+        ImGui::SameLine(right + ImGui::GetCursorPosX());
 
     if (!diskSelected)
         ImGui::BeginDisabled();
 
-    if (ImGui::Button("Далее", ImVec2(180.0f, 45.0f))) {
+    if (ImGui::Button("Далее", ImVec2(buttonWidth, buttonHeight))) {
         m_NextRequested = true;
     }
+
     if (!diskSelected)
         ImGui::EndDisabled();
 
@@ -57,10 +75,15 @@ void InstallPage::Draw() {
     Layout::End();
 }
 
+bool InstallPage::BackRequested() const {
+    return m_BackRequested;
+}
+
 bool InstallPage::NextRequested() const {
     return m_NextRequested;
 }
 
 void InstallPage::ResetState() {
+    m_BackRequested = false;
     m_NextRequested = false;
 }

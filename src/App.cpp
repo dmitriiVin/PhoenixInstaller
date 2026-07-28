@@ -100,6 +100,18 @@ void App::Run() {
             m_PageManager.SetPage(&m_ProgramPage);
         }
 
+        //=======================КНОПКИ НАЗАД=======================\\
+
+        if (m_InstallPage.BackRequested()) {
+            m_InstallPage.ResetState();
+            m_PageManager.SetPage(&m_WelcomePage);
+        }
+
+        if (m_ProgramPage.BackRequested()) {
+            m_ProgramPage.ResetState();
+            m_PageManager.SetPage(&m_InstallPage);
+        }
+
         m_ImGui.EndFrame();
         m_Renderer.EndFrame();
     }

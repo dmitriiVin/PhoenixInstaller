@@ -53,7 +53,24 @@ void ProgramPage::Draw() {
 
     Layout::Space(30);
 
-    if (ImGui::Button("Далее", ImVec2(180.0f, 45.0f))) {
+    ImGui::Separator();
+    Layout::Space(15);
+
+    constexpr float buttonWidth = 180.0f;
+    constexpr float buttonHeight = 45.0f;
+
+    // Назад
+    if (ImGui::Button("Назад", ImVec2(buttonWidth, buttonHeight))) {
+        m_BackRequested = true;
+    }
+
+    // Далее справа
+    float right = ImGui::GetContentRegionAvail().x - buttonWidth;
+
+    if (right > 0.0f)
+        ImGui::SameLine(right + ImGui::GetCursorPosX());
+
+    if (ImGui::Button("Далее", ImVec2(buttonWidth, buttonHeight))) {
         m_NextRequested = true;
     }
 
@@ -62,10 +79,15 @@ void ProgramPage::Draw() {
     Layout::End();
 }
 
+bool ProgramPage::BackRequested() const {
+    return m_BackRequested;
+}
+
 bool ProgramPage::NextRequested() const {
     return m_NextRequested;
 }
 
 void ProgramPage::ResetState() {
+    m_BackRequested = false;
     m_NextRequested = false;
 }

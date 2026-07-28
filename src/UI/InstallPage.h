@@ -12,6 +12,7 @@ class InstallPage : public Page {
 
     void Draw() override;
 
+    bool BackRequested() const;
     bool NextRequested() const;
     void ResetState();
 
@@ -20,5 +21,6 @@ class InstallPage : public Page {
 
     std::vector<DiskInfo> m_Disks;
 
+    bool m_BackRequested = false;
     bool m_NextRequested = false;
 };

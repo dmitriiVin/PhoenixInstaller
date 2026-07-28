@@ -9,11 +9,13 @@ class ProgramPage : public Page {
 
     void Draw() override;
 
+    bool BackRequested() const;
     bool NextRequested() const;
     void ResetState();
 
   private:
     InstallerContext &m_Context;
 
+    bool m_BackRequested = false;
     bool m_NextRequested = false;
 };
