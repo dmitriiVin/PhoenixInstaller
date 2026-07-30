@@ -12,6 +12,15 @@ enum class DiskBusType {
     SAS
 };
 
+enum class PartitionRole {
+    Unknown,
+    EFI,
+    MSR,
+    Windows,
+    Recovery,
+    Data
+};
+
 struct PartitionInfo {
     // Номер раздела на физическом диске
     uint32_t Number = 0;
@@ -28,10 +37,7 @@ struct PartitionInfo {
     // Свободное место
     uint64_t FreeSpace = 0;
 
-    // Системные признаки
-    bool IsEFI = false;
-    bool IsRecovery = false;
-    bool IsMSR = false;
+    PartitionRole Role = PartitionRole::Unknown;
 };
 
 struct DiskInfo {

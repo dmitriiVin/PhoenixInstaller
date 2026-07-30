@@ -6,10 +6,12 @@
 #include "Platform/Window.h"
 #include "Renderer/Renderer.h"
 #include "UI/ImGuiManager.h"
+#include "UI/InstallModePage.h"
 #include "UI/InstallPage.h"
 #include "UI/PageManager.h"
 #include "UI/ProgramPage.h"
 #include "UI/WelcomePage.h"
+#include "UI/WindowsPartitionPage.h"
 
 class App {
   public:
@@ -35,5 +37,7 @@ class App {
 
     WelcomePage m_WelcomePage;
     InstallPage m_InstallPage;
+    InstallModePage m_InstallModePage;
+    WindowsPartitionPage m_WindowsPartitionPage;
     ProgramPage m_ProgramPage;
 };

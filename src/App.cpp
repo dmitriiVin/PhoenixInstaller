@@ -19,7 +19,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
 
 Renderer *App::s_Renderer = nullptr;
 
-App::App() : m_InstallPage(m_Context), m_ProgramPage(m_Context) {
+App::App() : m_InstallPage(m_Context), m_InstallModePage(m_Context), m_WindowsPartitionPage(m_Context), m_ProgramPage(m_Context) {
 }
 
 LRESULT CALLBACK App::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -90,6 +90,8 @@ void App::Run() {
 
         m_PageManager.Draw();
 
+        //======================= ВПЕРЕД =======================\\
+
         if (m_WelcomePage.NextRequested()) {
             m_WelcomePage.ResetState();
             m_PageManager.SetPage(&m_InstallPage);
@@ -97,19 +99,47 @@ void App::Run() {
 
         if (m_InstallPage.NextRequested()) {
             m_InstallPage.ResetState();
+            m_PageManager.SetPage(&m_InstallModePage);
+        }
+
+        if (m_InstallModePage.NextRequested()) {
+            m_InstallModePage.ResetState();
+
+            if (m_Context.InstallMode == InstallMode::CleanDisk)
+                m_PageManager.SetPage(&m_WindowsPartitionPage);
+            else
+                m_PageManager.SetPage(&m_ProgramPage);
+        }
+
+        if (m_WindowsPartitionPage.NextRequested()) {
+            m_WindowsPartitionPage.ResetState();
             m_PageManager.SetPage(&m_ProgramPage);
         }
 
-        //=======================КНОПКИ НАЗАД=======================\\
+        //======================= НАЗАД =======================\\
 
         if (m_InstallPage.BackRequested()) {
             m_InstallPage.ResetState();
             m_PageManager.SetPage(&m_WelcomePage);
         }
 
+        if (m_InstallModePage.BackRequested()) {
+            m_InstallModePage.ResetState();
+            m_PageManager.SetPage(&m_InstallPage);
+        }
+
+        if (m_WindowsPartitionPage.BackRequested()) {
+            m_WindowsPartitionPage.ResetState();
+            m_PageManager.SetPage(&m_InstallModePage);
+        }
+
         if (m_ProgramPage.BackRequested()) {
             m_ProgramPage.ResetState();
-            m_PageManager.SetPage(&m_InstallPage);
+
+            if (m_Context.InstallMode == InstallMode::CleanDisk)
+                m_PageManager.SetPage(&m_WindowsPartitionPage);
+            else
+                m_PageManager.SetPage(&m_InstallModePage);
         }
 
         m_ImGui.EndFrame();

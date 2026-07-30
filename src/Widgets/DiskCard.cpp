@@ -50,16 +50,25 @@ const char *GetDiskType(const DiskInfo &disk) {
 }
 
 const char *GetPartitionType(const PartitionInfo &part) {
-    if (part.IsEFI)
+    switch (part.Role) {
+    case PartitionRole::EFI:
         return "EFI";
 
-    if (part.IsMSR)
+    case PartitionRole::MSR:
         return "MSR";
 
-    if (part.IsRecovery)
+    case PartitionRole::Windows:
+        return "Windows";
+
+    case PartitionRole::Recovery:
         return "Recovery";
 
-    return "Data";
+    case PartitionRole::Data:
+        return "Data";
+
+    default:
+        return "Unknown";
+    }
 }
 
 } // namespace

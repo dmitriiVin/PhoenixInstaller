@@ -242,9 +242,12 @@ void DiskManager::EnumeratePartitions(DiskInfo &disk) {
             if (layout->PartitionStyle == PARTITION_STYLE_GPT) {
                 const GUID &type = p.Gpt.PartitionType;
 
-                part.IsEFI = IsEqualGUID(type, kPartitionSystemGuid);
-                part.IsMSR = IsEqualGUID(type, kPartitionMsrGuid);
-                part.IsRecovery = IsEqualGUID(type, kPartitionRecoveryGuid);
+                if (IsEqualGUID(type, kPartitionSystemGuid))
+                    part.Role = PartitionRole::EFI;
+                else if (IsEqualGUID(type, kPartitionMsrGuid))
+                    part.Role = PartitionRole::MSR;
+                else if (IsEqualGUID(type, kPartitionRecoveryGuid))
+                    part.Role = PartitionRole::Recovery;
             }
 
             break;
