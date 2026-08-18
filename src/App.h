@@ -5,6 +5,7 @@
 #include "Core/InstallerContext.h"
 #include "Platform/Window.h"
 #include "Renderer/Renderer.h"
+#include "UI/ConfirmPage.h"
 #include "UI/ImGuiManager.h"
 #include "UI/InstallModePage.h"
 #include "UI/InstallPage.h"
@@ -40,4 +41,5 @@ class App {
     InstallModePage m_InstallModePage;
     WindowsPartitionPage m_WindowsPartitionPage;
     ProgramPage m_ProgramPage;
+    ConfirmPage m_ConfirmPage;
 };

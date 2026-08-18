@@ -19,7 +19,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
 
 Renderer *App::s_Renderer = nullptr;
 
-App::App() : m_InstallPage(m_Context), m_InstallModePage(m_Context), m_WindowsPartitionPage(m_Context), m_ProgramPage(m_Context) {
+App::App() : m_InstallPage(m_Context), m_InstallModePage(m_Context), m_WindowsPartitionPage(m_Context), m_ProgramPage(m_Context), m_ConfirmPage(m_Context) {
 }
 
 LRESULT CALLBACK App::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -116,6 +116,16 @@ void App::Run() {
             m_PageManager.SetPage(&m_ProgramPage);
         }
 
+        if (m_ProgramPage.NextRequested()) {
+            m_ProgramPage.ResetState();
+            m_PageManager.SetPage(&m_ConfirmPage);
+        }
+
+        if (m_ConfirmPage.NextRequested()) {
+            m_ConfirmPage.ResetState();
+            // Proceed with installation
+        }
+
         //======================= НАЗАД =======================\\
 
         if (m_InstallPage.BackRequested()) {
@@ -140,6 +150,11 @@ void App::Run() {
                 m_PageManager.SetPage(&m_WindowsPartitionPage);
             else
                 m_PageManager.SetPage(&m_InstallModePage);
+        }
+
+        if (m_ConfirmPage.BackRequested()) {
+            m_ConfirmPage.ResetState();
+            m_PageManager.SetPage(&m_ProgramPage);
         }
 
         m_ImGui.EndFrame();
