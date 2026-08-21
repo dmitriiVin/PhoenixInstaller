@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "Platform/Window.h"
+#include "Installer/InstallationLauncher.h"
 #include "Resources/TextureManager.h"
 #include "UI/Fonts/Fonts.h"
 #include "UI/ImGuiManager.h"
@@ -123,7 +124,15 @@ void App::Run() {
 
         if (m_ConfirmPage.NextRequested()) {
             m_ConfirmPage.ResetState();
-            // Proceed with installation
+
+            std::wstring error;
+
+            if (!InstallationLauncher::Launch(m_Context, error)) {
+                MessageBoxW(m_Window.GetHandle(), error.c_str(), L"Phoenix Installer", MB_OK | MB_ICONERROR);
+            }
+            else {
+                PostQuitMessage(0);
+            }
         }
 
         //======================= НАЗАД =======================\\

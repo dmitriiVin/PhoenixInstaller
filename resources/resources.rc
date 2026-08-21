@@ -1,11 +1,27 @@
-#include "resource.h"
+#include "@RESOURCE_HEADER@"
 
-IDR_FONT_MAIN          RCDATA   "..\\assets\\fonts\\Inter-Bold.otf"
-IDR_FONT_ICONS         RCDATA   "..\\assets\\fonts\\fa-solid-900.ttf"
-IDR_FONT_BRANDS_ICONS  RCDATA   "..\\assets\\fonts\\fa-brands-400.otf"
+#define PHOENIX_RESOURCE_CONTENT_HASH "@EMBEDDED_RESOURCE_HASH@"
 
-IDR_LOGO_PNG           RCDATA   "..\\assets\\images\\logo.png"
+IDR_FONT_MAIN          RCDATA   "@ASSETS_DIR@/fonts/Inter-Bold.otf"
+IDR_FONT_ICONS         RCDATA   "@ASSETS_DIR@/fonts/fa-solid-900.ttf"
+IDR_FONT_BRANDS_ICONS  RCDATA   "@ASSETS_DIR@/fonts/fa-brands-400.otf"
 
-IDI_APP_ICON           ICON     "..\\resources\\logo.ico"
+IDR_LOGO_PNG           RCDATA   "@ASSETS_DIR@/images/logo.png"
 
-IDR_PACKAGES_JSON      RCDATA   "..\\assets\\packages.json"
+IDI_APP_ICON           ICON     "@RESOURCES_DIR@/logo.ico"
+
+IDR_PACKAGES_JSON      RCDATA   "@ASSETS_DIR@/packages.json"
+
+IDR_SCRIPT_INSTALL                   RCDATA   "@SCRIPTS_DIR@/Install.bat"
+IDR_SCRIPT_COMMON                    RCDATA   "@SCRIPTS_DIR@/Common.bat"
+IDR_SCRIPT_CLEAN_DISK                RCDATA   "@SCRIPTS_DIR@/Disk/CleanDisk.bat"
+IDR_SCRIPT_PREPARE_WINDOWS           RCDATA   "@SCRIPTS_DIR@/Disk/PrepareWindows.bat"
+IDR_SCRIPT_PREPARE_WINDOWS_AND_DATA  RCDATA   "@SCRIPTS_DIR@/Disk/PrepareWindowsAndData.bat"
+IDR_SCRIPT_APPLY_IMAGE               RCDATA   "@SCRIPTS_DIR@/Windows/ApplyImage.bat"
+IDR_SCRIPT_SETUP_BOOT                RCDATA   "@SCRIPTS_DIR@/Windows/SetupBoot.bat"
+IDR_SCRIPT_CONFIGURE_WINDOWS         RCDATA   "@SCRIPTS_DIR@/Windows/ConfigureWindows.bat"
+IDR_SCRIPT_INSTALL_DRIVERS           RCDATA   "@SCRIPTS_DIR@/Drivers/InstallDrivers.bat"
+IDR_SCRIPT_INSTALL_PROGRAMS          RCDATA   "@SCRIPTS_DIR@/Programs/InstallPrograms.bat"
+IDR_SCRIPT_WINDOWS_TWEAKS            RCDATA   "@SCRIPTS_DIR@/Tweaks/WindowsTweaks.bat"
+IDR_SCRIPT_SECURITY                  RCDATA   "@SCRIPTS_DIR@/Tweaks/Security.ps1"
+IDR_PHOENIX_SETUP                    RCDATA   "@PHOENIX_SETUP_RESOURCE@"

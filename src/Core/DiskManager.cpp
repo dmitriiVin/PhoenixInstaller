@@ -110,6 +110,17 @@ bool QueryPartitionStyle(HANDLE disk, DiskInfo &info) {
     return true;
 }
 
+bool IsWindowsInstallationVolume(const std::wstring &volumeName) {
+    const std::wstring systemHive = volumeName + L"Windows\\System32\\Config\\SYSTEM";
+    const DWORD attributes = GetFileAttributesW(systemHive.c_str());
+
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+}
+
+bool IsDataVolumeLabel(const std::wstring &label) {
+    return CompareStringOrdinal(label.c_str(), -1, L"Data", -1, TRUE) == CSTR_EQUAL;
+}
+
 } // namespace
 
 std::vector<DiskInfo> DiskManager::Enumerate() {
@@ -266,6 +277,13 @@ void DiskManager::EnumeratePartitions(DiskInfo &disk) {
 
         if (GetVolumeInformationW(volumeName, label, ARRAYSIZE(label), nullptr, nullptr, nullptr, nullptr, 0)) {
             part.Label = label;
+        }
+
+        if (part.Role == PartitionRole::Unknown) {
+            if (IsWindowsInstallationVolume(volumeName))
+                part.Role = PartitionRole::Windows;
+            else if (IsDataVolumeLabel(part.Label))
+                part.Role = PartitionRole::Data;
         }
 
         ULARGE_INTEGER total{};

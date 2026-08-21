@@ -21,6 +21,7 @@ Makefile
 *.user
 
 # MSBuild
+
 *.obj
 *.pch
 *.ilk

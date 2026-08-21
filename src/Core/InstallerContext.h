@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -20,9 +21,9 @@ class InstallerContext {
     // Способ установки
     InstallMode InstallMode = InstallMode::ReinstallWindows;
     // Используется только при полной очистке диска
-    uint64_t WindowsPartitionSize = 150ull * 1024 * 1024 * 1024;
+    std::uint64_t WindowsPartitionSize = 150ull * 1024 * 1024 * 1024;
     // Выбранная редакция Windows
-    int SelectedEdition = -1;
+    int SelectedEdition = 2;
     // Устанавливать драйверы
     bool InstallDrivers = true;
     // Выбранные программы
