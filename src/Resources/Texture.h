@@ -1,6 +1,7 @@
 #pragma once
 
-#include <d3d11.h>
+#include <cstdint>
+#include <filesystem>
 
 class Texture {
   public:
@@ -13,19 +14,19 @@ class Texture {
     Texture(Texture &&other) noexcept;
     Texture &operator=(Texture &&other) noexcept;
 
-    bool LoadFromResource(ID3D11Device *device, int resourceId);
+    bool LoadFromFile(const std::filesystem::path &path);
 
     void Reset();
 
     bool IsValid() const;
 
-    ID3D11ShaderResourceView *Get() const;
+    std::uint32_t Get() const;
 
     int Width() const;
     int Height() const;
 
   private:
-    ID3D11ShaderResourceView *m_Texture = nullptr;
+    std::uint32_t m_Texture = 0;
 
     int m_Width = 0;
     int m_Height = 0;

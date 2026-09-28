@@ -4,8 +4,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include "Core/Utils.h"
-
 namespace {
 
 const char *ToConfigMode(InstallMode mode) {
@@ -74,40 +72,40 @@ bool InstallationConfig::Write(const InstallerContext &context, const std::files
     }
 
     const auto &disk = *context.SelectedDisk;
+
     nlohmann::json root;
 
-    root["disk"] = {
-        {"number", disk.Number},
-        {"model", WideToUtf8(disk.Model)},
-        {"size_bytes", disk.Size},
-        {"bus_type", ToConfigBusType(disk.BusType)},
-    };
+    root["disk"] = {{"number", disk.Number}, {"device", disk.Device}, {"model", disk.Model}, {"size_bytes", disk.Size}, {"bus_type", ToConfigBusType(disk.BusType)},
+                    {"ssd", disk.IsSSD},     {"usb", disk.IsUSB},     {"gpt", disk.IsGPT}};
 
-    root["installation"] = {
-        {"mode", ToConfigMode(context.InstallMode)},
-        {"windows_partition_size_gb", context.WindowsPartitionSize / (1024ull * 1024ull * 1024ull)},
-    };
+    root["installation"] = {{"mode", ToConfigMode(context.Mode)}, {"windows_partition_size_gb", context.WindowsPartitionSize / (1024ull * 1024ull * 1024ull)}};
 
-    if (context.InstallMode != InstallMode::CleanDisk) {
+    if (context.Mode != InstallMode::CleanDisk) {
         const PartitionInfo *windowsPartition = FindSinglePartition(disk, PartitionRole::Windows);
 
         if (!windowsPartition) {
-            error = "The selected disk does not contain one unambiguous Windows partition.";
+            error = "The selected disk does not contain one "
+                    "unambiguous Windows partition.";
+
             return false;
         }
 
         root["installation"]["partitions"]["windows_number"] = windowsPartition->Number;
 
-        if (context.InstallMode == InstallMode::ReinstallWindowsAndFormatData) {
+        if (context.Mode == InstallMode::ReinstallWindowsAndFormatData) {
             const PartitionInfo *dataPartition = FindSinglePartition(disk, PartitionRole::Data);
 
             if (!dataPartition) {
-                error = "The selected disk does not contain one unambiguous Data partition.";
+                error = "The selected disk does not contain one "
+                        "unambiguous Data partition.";
+
                 return false;
             }
 
             if (dataPartition->Number == windowsPartition->Number) {
-                error = "Windows and Data partitions cannot be the same partition.";
+                error = "Windows and Data partitions cannot be "
+                        "the same partition.";
+
                 return false;
             }
 
@@ -115,19 +113,24 @@ bool InstallationConfig::Write(const InstallerContext &context, const std::files
         }
     }
 
-    root["windows"] = {
-        {"image", WideToUtf8(imagePath.wstring())},
-        {"edition", context.SelectedEdition},
-    };
+    root["windows"] = {{"image", imagePath.string()}, {"edition", context.SelectedEdition}};
+
     root["drivers"] = {{"install", context.InstallDrivers}};
+
     root["packages"] = context.SelectedPackages;
 
     std::error_code filesystemError;
-    std::filesystem::create_directories(destination.parent_path(), filesystemError);
 
-    if (filesystemError) {
-        error = "Unable to create the configuration directory.";
-        return false;
+    const auto parent = destination.parent_path();
+
+    if (!parent.empty()) {
+        std::filesystem::create_directories(parent, filesystemError);
+
+        if (filesystemError) {
+            error = "Unable to create the configuration directory.";
+
+            return false;
+        }
     }
 
     std::ofstream file(destination, std::ios::binary | std::ios::trunc);

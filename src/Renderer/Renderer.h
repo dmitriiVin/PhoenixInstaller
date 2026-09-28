@@ -1,31 +1,23 @@
 #pragma once
 
-#include <d3d11.h>
-#include <windows.h>
+#include <cstdint>
+
+struct GLFWwindow;
 
 class Renderer {
   public:
-    bool Initialize(HWND hwnd);
+    bool Initialize(GLFWwindow *window);
 
     void BeginFrame();
     void EndFrame();
 
-    void Resize(UINT width, UINT height);
+    void Resize(std::uint32_t width, std::uint32_t height);
 
     void Shutdown();
 
-    ID3D11Device *GetDevice() const;
-    ID3D11DeviceContext *GetContext() const;
-
   private:
-    bool CreateDevice(D3D_DRIVER_TYPE driverType);
-    bool CreateRenderTarget();
+    GLFWwindow *m_Window = nullptr;
 
-  private:
-    HWND m_Window = nullptr;
-
-    ID3D11Device *m_Device = nullptr;
-    ID3D11DeviceContext *m_Context = nullptr;
-    IDXGISwapChain *m_SwapChain = nullptr;
-    ID3D11RenderTargetView *m_RenderTarget = nullptr;
+    std::uint32_t m_Width = 0;
+    std::uint32_t m_Height = 0;
 };

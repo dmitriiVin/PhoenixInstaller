@@ -1,6 +1,6 @@
 #include "App.h"
 
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+int main() {
     App app;
 
     if (!app.Initialize())

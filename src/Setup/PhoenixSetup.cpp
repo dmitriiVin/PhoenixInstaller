@@ -56,8 +56,7 @@ std::wstring QuoteArgument(const std::wstring &argument) {
     return quoted;
 }
 
-bool RunScript(const std::filesystem::path &script, const std::vector<std::wstring> &arguments, const std::filesystem::path &workingDirectory,
-               const Logger &logger) {
+bool RunScript(const std::filesystem::path &script, const std::vector<std::wstring> &arguments, const std::filesystem::path &workingDirectory, const Logger &logger) {
     if (!std::filesystem::is_regular_file(script)) {
         logger.Write("ERROR", "Required script is missing: " + script.string());
         return false;
@@ -74,8 +73,7 @@ bool RunScript(const std::filesystem::path &script, const std::vector<std::wstri
     startupInfo.cb = sizeof(startupInfo);
     PROCESS_INFORMATION processInfo{};
 
-    if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, workingDirectory.c_str(), &startupInfo,
-                        &processInfo)) {
+    if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, workingDirectory.c_str(), &startupInfo, &processInfo)) {
         logger.Write("ERROR", "Unable to start script: " + script.string());
         return false;
     }
@@ -149,8 +147,7 @@ bool InstallPackages(const nlohmann::json &configuration, const std::filesystem:
         const auto installer = root / L"Programs" / package->Folder / package->Installer;
 
         if (!RunScript(root / L"Scripts" / L"Programs" / L"InstallPrograms.bat",
-                       {std::wstring(packageId.begin(), packageId.end()), installer.wstring(), std::wstring(package->Arguments.begin(), package->Arguments.end())},
-                       root, logger)) {
+                       {std::wstring(packageId.begin(), packageId.end()), installer.wstring(), std::wstring(package->Arguments.begin(), package->Arguments.end())}, root, logger)) {
             return false;
         }
     }

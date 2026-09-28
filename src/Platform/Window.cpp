@@ -1,49 +1,45 @@
 #include "Window.h"
 
-bool Window::Create(const wchar_t *title, int width, int height, WNDPROC proc) {
-    m_Instance = GetModuleHandle(nullptr);
-
-    WNDCLASSEX wc{};
-
-    wc.cbSize = sizeof(WNDCLASSEX);
-    wc.lpfnWndProc = proc;
-    wc.hInstance = m_Instance;
-    wc.lpszClassName = L"PhoenixInstaller";
-
-    RegisterClassEx(&wc);
-
-    m_Window = CreateWindowEx(0, wc.lpszClassName, title, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, width, height, nullptr, nullptr, m_Instance, nullptr);
-
-    if (!m_Window)
+bool Window::Create(const char *title, int width, int height) {
+    if (!glfwInit())
         return false;
 
-    ShowWindow(m_Window, SW_SHOW);
-    UpdateWindow(m_Window);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+
+    m_Window = glfwCreateWindow(width, height, title, nullptr, nullptr);
+
+    if (!m_Window) {
+        glfwTerminate();
+        return false;
+    }
+
+    glfwMakeContextCurrent(m_Window);
+
+    glfwSwapInterval(1);
 
     return true;
 }
 
 bool Window::ProcessMessages() {
-    MSG msg{};
+    if (!m_Window)
+        return false;
 
-    while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
-        if (msg.message == WM_QUIT)
-            return false;
+    glfwPollEvents();
 
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-
-    return true;
+    return !glfwWindowShouldClose(m_Window);
 }
 
-HWND Window::GetHandle() const {
+GLFWwindow *Window::GetHandle() const {
     return m_Window;
 }
 
 void Window::Destroy() {
     if (m_Window) {
-        DestroyWindow(m_Window);
+        glfwDestroyWindow(m_Window);
         m_Window = nullptr;
     }
+
+    glfwTerminate();
 }

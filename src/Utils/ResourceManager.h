@@ -1,12 +1,13 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
+#include <string>
 #include <vector>
-#include <windows.h>
 
-class ResourceManager
-{
-public:
-    static std::vector<std::uint8_t> Load(int id);
-    static bool Extract(int id, const std::filesystem::path &destination);
+class ResourceManager {
+  public:
+    static std::vector<std::uint8_t> Load(const std::filesystem::path &path);
+
+    static bool Extract(const std::filesystem::path &source, const std::filesystem::path &destination);
 };

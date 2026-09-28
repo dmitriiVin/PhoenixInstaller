@@ -3,7 +3,6 @@
 #include <string>
 
 #include "Core/DiskInfo.h"
-#include "Core/Utils.h"
 #include "UI/Fonts/Fonts.h"
 #include "UI/Layout/Layout.h"
 #include "Widgets/Card.h"
@@ -56,7 +55,8 @@ void ConfirmPage::Draw() {
     if (m_Context.SelectedDisk) {
         const auto &disk = *m_Context.SelectedDisk;
 
-        auto model = WideToUtf8(disk.Model);
+        const std::string &model = disk.Model;
+
         ImGui::TextUnformatted(model.c_str());
 
         ImGui::Text("Модель");
@@ -66,19 +66,24 @@ void ConfirmPage::Draw() {
         ImGui::Text("Тип");
         ImGui::SameLine(180);
 
-        if (disk.BusType == DiskBusType::NVMe)
+        if (disk.BusType == DiskBusType::NVMe) {
             ImGui::TextUnformatted("NVMe SSD");
-        else if (disk.BusType == DiskBusType::SATA)
+        }
+        else if (disk.BusType == DiskBusType::SATA) {
             ImGui::TextUnformatted("SATA SSD");
-        else
+        }
+        else {
             ImGui::TextUnformatted("Диск");
+        }
 
         ImGui::Text("Таблица");
         ImGui::SameLine(180);
+
         ImGui::TextUnformatted(disk.IsGPT ? "GPT" : "MBR");
 
         ImGui::Text("Размер");
         ImGui::SameLine(180);
+
         ImGui::Text("%.1f ГБ", disk.Size / 1024.0 / 1024.0 / 1024.0);
     }
 
@@ -87,7 +92,7 @@ void ConfirmPage::Draw() {
     ImGui::TextDisabled("Будет создано");
     ImGui::Separator();
 
-    switch (m_Context.InstallMode) {
+    switch (m_Context.Mode) {
     case InstallMode::ReinstallWindows:
 
         ImGui::Text("Windows (C:)");
@@ -113,19 +118,18 @@ void ConfirmPage::Draw() {
         break;
 
     case InstallMode::CleanDisk: {
-        constexpr double MB = 1024.0 * 1024.0;
         constexpr double GB = 1024.0 * 1024.0 * 1024.0;
 
         const auto &disk = *m_Context.SelectedDisk;
 
-        double diskSize = disk.Size / GB;
+        const double diskSize = disk.Size / GB;
 
-        double windowsSize = m_Context.WindowsPartitionSize / GB;
+        const double windowsSize = m_Context.WindowsPartitionSize / GB;
 
-        constexpr double efiSize = 0.1;      // 100 МБ
-        constexpr double recoverySize = 0.8; // 800 МБ
+        constexpr double efiSize = 0.1;
+        constexpr double recoverySize = 0.8;
 
-        double dataSize = diskSize - windowsSize - efiSize - recoverySize;
+        const double dataSize = diskSize - windowsSize - efiSize - recoverySize;
 
         ImGui::Text("EFI");
         ImGui::SameLine(180);
@@ -138,11 +142,15 @@ void ConfirmPage::Draw() {
         ImGui::Text("Data (D:)");
         ImGui::SameLine(180);
 
-        if (dataSize > 0)
+        if (dataSize > 0) {
             ImGui::Text("%.1f ГБ", dataSize);
-        else
-            ImGui::Text("-");
-    } break;
+        }
+        else {
+            ImGui::TextUnformatted("-");
+        }
+
+        break;
+    }
     }
 
     Layout::Space(15);
@@ -173,7 +181,7 @@ void ConfirmPage::Draw() {
     else {
         const float half = ImGui::GetContentRegionAvail().x * 0.5f;
 
-        for (size_t i = 0; i < m_Context.SelectedPackages.size(); ++i) {
+        for (std::size_t i = 0; i < m_Context.SelectedPackages.size(); ++i) {
             ImGui::Text("✓ %s", m_Context.SelectedPackages[i].c_str());
 
             if (i % 2 == 0 && i + 1 < m_Context.SelectedPackages.size()) {
@@ -188,18 +196,24 @@ void ConfirmPage::Draw() {
 
     ImGui::TextColored(ImVec4(1.f, .82f, .2f, 1.f), "Внимание!");
 
-    switch (m_Context.InstallMode) {
+    switch (m_Context.Mode) {
     case InstallMode::ReinstallWindows:
+
         ImGui::TextWrapped("Будет переустановлена Windows. "
                            "Раздел Data (D:) будет сохранён.");
+
         break;
 
     case InstallMode::ReinstallWindowsAndFormatData:
+
         ImGui::TextWrapped("Разделы Windows и Data будут отформатированы.");
+
         break;
 
     case InstallMode::CleanDisk:
+
         ImGui::TextWrapped("Все разделы выбранного диска будут удалены.");
+
         break;
     }
 
@@ -212,16 +226,19 @@ void ConfirmPage::Draw() {
     constexpr float ButtonWidth = 250.0f;
     constexpr float ButtonHeight = 45.0f;
 
-    if (ImGui::Button("Назад", ImVec2(ButtonWidth, ButtonHeight)))
+    if (ImGui::Button("Назад", ImVec2(ButtonWidth, ButtonHeight))) {
         m_BackRequested = true;
+    }
 
-    float right = ImGui::GetContentRegionAvail().x - ButtonWidth;
+    const float right = ImGui::GetContentRegionAvail().x - ButtonWidth;
 
-    if (right > 0.0f)
+    if (right > 0.0f) {
         ImGui::SameLine(ImGui::GetCursorPosX() + right);
+    }
 
-    if (ImGui::Button("Установить Windows", ImVec2(ButtonWidth, ButtonHeight)))
+    if (ImGui::Button("Установить Windows", ImVec2(ButtonWidth, ButtonHeight))) {
         m_NextRequested = true;
+    }
 
     Layout::EndContainer();
     Layout::EndContent();

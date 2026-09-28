@@ -2,38 +2,47 @@
 
 #include <fstream>
 
-std::vector<std::uint8_t> ResourceManager::Load(int id)
-{
-    HRSRC res = FindResource(
-        nullptr,
-        MAKEINTRESOURCE(id),
-        RT_RCDATA);
+std::vector<std::uint8_t> ResourceManager::Load(const std::filesystem::path &path) {
+    std::ifstream file(path, std::ios::binary);
 
-    if (!res)
+    if (!file.is_open())
         return {};
 
-    DWORD size = SizeofResource(nullptr, res);
+    file.seekg(0, std::ios::end);
 
-    HGLOBAL data = LoadResource(nullptr, res);
+    const auto size = file.tellg();
 
-    void* ptr = LockResource(data);
+    if (size <= 0)
+        return {};
 
-    return std::vector<std::uint8_t>(
-        (std::uint8_t*)ptr,
-        (std::uint8_t*)ptr + size);
+    file.seekg(0, std::ios::beg);
+
+    std::vector<std::uint8_t> data(static_cast<std::size_t>(size));
+
+    file.read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(data.size()));
+
+    if (!file)
+        return {};
+
+    return data;
 }
 
-bool ResourceManager::Extract(int id, const std::filesystem::path &destination) {
-    const auto data = Load(id);
+bool ResourceManager::Extract(const std::filesystem::path &source, const std::filesystem::path &destination) {
+    const auto data = Load(source);
 
     if (data.empty())
         return false;
 
     std::error_code error;
-    std::filesystem::create_directories(destination.parent_path(), error);
 
-    if (error)
-        return false;
+    const auto parent = destination.parent_path();
+
+    if (!parent.empty()) {
+        std::filesystem::create_directories(parent, error);
+
+        if (error)
+            return false;
+    }
 
     std::ofstream file(destination, std::ios::binary | std::ios::trunc);
 

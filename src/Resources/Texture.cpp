@@ -1,8 +1,8 @@
-// Texture.cpp
 #include "Texture.h"
 
 #include "Utils/ResourceManager.h"
 
+#include <GL/gl.h>
 #include <stb_image.h>
 
 Texture::~Texture() {
@@ -14,7 +14,7 @@ Texture::Texture(Texture &&other) noexcept {
     m_Width = other.m_Width;
     m_Height = other.m_Height;
 
-    other.m_Texture = nullptr;
+    other.m_Texture = 0;
     other.m_Width = 0;
     other.m_Height = 0;
 }
@@ -27,7 +27,7 @@ Texture &Texture::operator=(Texture &&other) noexcept {
         m_Width = other.m_Width;
         m_Height = other.m_Height;
 
-        other.m_Texture = nullptr;
+        other.m_Texture = 0;
         other.m_Width = 0;
         other.m_Height = 0;
     }
@@ -36,19 +36,23 @@ Texture &Texture::operator=(Texture &&other) noexcept {
 }
 
 void Texture::Reset() {
-    if (m_Texture) {
-        m_Texture->Release();
-        m_Texture = nullptr;
+    if (m_Texture != 0) {
+        GLuint texture = m_Texture;
+
+        glDeleteTextures(1, &texture);
+
+        m_Texture = 0;
     }
 
     m_Width = 0;
     m_Height = 0;
 }
 
-bool Texture::LoadFromResource(ID3D11Device *device, int resourceId) {
+bool Texture::LoadFromFile(const std::filesystem::path &path) {
     Reset();
 
-    auto data = ResourceManager::Load(resourceId);
+    auto data = ResourceManager::Load(path);
+
     if (data.empty())
         return false;
 
@@ -61,50 +65,32 @@ bool Texture::LoadFromResource(ID3D11Device *device, int resourceId) {
     if (!pixels)
         return false;
 
-    D3D11_TEXTURE2D_DESC textureDesc{};
-    textureDesc.Width = width;
-    textureDesc.Height = height;
-    textureDesc.MipLevels = 1;
-    textureDesc.ArraySize = 1;
-    textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    textureDesc.SampleDesc.Count = 1;
-    textureDesc.SampleDesc.Quality = 0;
-    textureDesc.Usage = D3D11_USAGE_DEFAULT;
-    textureDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    textureDesc.CPUAccessFlags = 0;
-    textureDesc.MiscFlags = 0;
+    GLuint texture = 0;
 
-    D3D11_SUBRESOURCE_DATA subresource{};
-    subresource.pSysMem = pixels;
-    subresource.SysMemPitch = width * 4;
-    subresource.SysMemSlicePitch = 0;
+    glGenTextures(1, &texture);
 
-    ID3D11Texture2D *texture = nullptr;
-
-    HRESULT hr = device->CreateTexture2D(&textureDesc, &subresource, &texture);
-
-    if (FAILED(hr)) {
+    if (texture == 0) {
         stbi_image_free(pixels);
         return false;
     }
 
-    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-    srvDesc.Format = textureDesc.Format;
-    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MipLevels = 1;
-    srvDesc.Texture2D.MostDetailedMip = 0;
+    glBindTexture(GL_TEXTURE_2D, texture);
 
-    hr = device->CreateShaderResourceView(texture, &srvDesc, &m_Texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
-    texture->Release();
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
 
     stbi_image_free(pixels);
 
-    if (FAILED(hr)) {
-        Reset();
-        return false;
-    }
-
+    m_Texture = texture;
     m_Width = width;
     m_Height = height;
 
@@ -112,10 +98,10 @@ bool Texture::LoadFromResource(ID3D11Device *device, int resourceId) {
 }
 
 bool Texture::IsValid() const {
-    return m_Texture != nullptr;
+    return m_Texture != 0;
 }
 
-ID3D11ShaderResourceView *Texture::Get() const {
+std::uint32_t Texture::Get() const {
     return m_Texture;
 }
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+#include <thread>
 #include <vector>
 
 #include "Core/InstallerContext.h"
@@ -17,21 +19,15 @@
 class App {
   public:
     App();
+
     bool Initialize();
     void Run();
     void Shutdown();
 
   private:
-    static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-    static Renderer *s_Renderer;
-
-    std::vector<unsigned char> m_FontData;
-
     Window m_Window;
     Renderer m_Renderer;
     ImGuiManager m_ImGui;
-
     PageManager m_PageManager;
 
     InstallerContext m_Context;
@@ -42,4 +38,9 @@ class App {
     WindowsPartitionPage m_WindowsPartitionPage;
     ProgramPage m_ProgramPage;
     ConfirmPage m_ConfirmPage;
+
+    std::thread m_InstallationThread;
+
+    bool m_ShowInstallationError = false;
+    std::string m_InstallationError;
 };

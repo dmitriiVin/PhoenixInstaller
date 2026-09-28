@@ -74,14 +74,18 @@ const char *GetPartitionType(const PartitionInfo &part) {
 } // namespace
 
 bool DiskCard::Draw(const DiskInfo &disk, bool selected) {
-    ImGui::PushID(disk.Number);
+    ImGui::PushID(static_cast<int>(disk.Number));
 
     Card::Begin("DiskCard", selected);
 
     // Заголовок
     ImGui::Text("%s", ICON_FA_HARD_DRIVE);
     ImGui::SameLine();
-    ImGui::Text("%ls", disk.Model.c_str());
+
+    if (!disk.Model.empty())
+        ImGui::TextUnformatted(disk.Model.c_str());
+    else
+        ImGui::TextUnformatted("Unknown disk");
 
     ImGui::Separator();
 
@@ -99,13 +103,15 @@ bool DiskCard::Draw(const DiskInfo &disk, bool selected) {
         for (const auto &part : disk.Partitions) {
             std::string title = GetPartitionType(part);
 
-            if (part.Letter) {
+            // Linux не использует буквы дисков вроде C:, D:.
+            // Если раздел смонтирован, показываем точку монтирования.
+            if (!part.MountPoint.empty()) {
                 title += " (";
-                title += static_cast<char>(part.Letter);
-                title += ":)";
+                title += part.MountPoint;
+                title += ")";
             }
 
-            std::string size = FormatSize(part.Size);
+            const std::string size = FormatSize(part.Size);
 
             ImGui::Bullet();
             ImGui::SameLine();
@@ -114,12 +120,12 @@ bool DiskCard::Draw(const DiskInfo &disk, bool selected) {
 
             if (!part.Label.empty()) {
                 ImGui::SameLine();
-                ImGui::TextDisabled("[%ls]", part.Label.c_str());
+                ImGui::TextDisabled("[%s]", part.Label.c_str());
             }
 
-            ImVec2 textSize = ImGui::CalcTextSize(size.c_str());
+            const ImVec2 textSize = ImGui::CalcTextSize(size.c_str());
 
-            float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+            const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
 
             ImGui::SameLine(right - ImGui::GetCursorScreenPos().x - textSize.x);
 
@@ -127,7 +133,7 @@ bool DiskCard::Draw(const DiskInfo &disk, bool selected) {
         }
     }
 
-    bool clicked = Card::End();
+    const bool clicked = Card::End();
 
     ImGui::PopID();
 

@@ -1,40 +1,46 @@
 #include "TextureManager.h"
 
-ID3D11Device *TextureManager::s_Device = nullptr;
+bool TextureManager::s_Initialized = false;
 
-std::unordered_map<int, Texture> TextureManager::s_Textures;
+std::unordered_map<std::string, Texture> TextureManager::s_Textures;
 
-bool TextureManager::Initialize(ID3D11Device *device) {
-    s_Device = device;
+bool TextureManager::Initialize() {
+    s_Initialized = true;
 
-    return s_Device != nullptr;
+    return true;
 }
 
 void TextureManager::Shutdown() {
     s_Textures.clear();
 
-    s_Device = nullptr;
+    s_Initialized = false;
 }
 
-Texture *TextureManager::Get(int resourceId) {
-    auto it = s_Textures.find(resourceId);
+Texture *TextureManager::Get(const std::filesystem::path &path) {
+    const std::string key = path.lexically_normal().string();
+
+    auto it = s_Textures.find(key);
 
     if (it != s_Textures.end())
         return &it->second;
 
-    return Load(resourceId);
+    return Load(path);
 }
 
-Texture *TextureManager::Load(int resourceId) {
-    if (!s_Device)
+Texture *TextureManager::Load(const std::filesystem::path &path) {
+    if (!s_Initialized)
         return nullptr;
 
     Texture texture;
 
-    if (!texture.LoadFromResource(s_Device, resourceId))
+    if (!texture.LoadFromFile(path))
         return nullptr;
 
-    auto [it, inserted] = s_Textures.emplace(resourceId, std::move(texture));
+    const std::string key = path.lexically_normal().string();
+
+    auto [it, inserted] = s_Textures.emplace(key, std::move(texture));
+
+    (void)inserted;
 
     return &it->second;
 }

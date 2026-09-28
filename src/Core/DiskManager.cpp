@@ -1,124 +1,307 @@
 #include "DiskManager.h"
 
-#include <Windows.h>
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
-#include <vector>
-#include <winioctl.h>
+#include <utility>
+
+#include <sys/statvfs.h>
+
+namespace fs = std::filesystem;
 
 namespace {
 
-const GUID kPartitionSystemGuid = {0xC12A7328, 0xF81F, 0x11D2, {0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B}};
+constexpr const char *EFI_GUID = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
 
-const GUID kPartitionMsrGuid = {0xE3C9E316, 0x0B5C, 0x4DB8, {0x81, 0x7D, 0xF9, 0x2D, 0xF0, 0x02, 0x15, 0xAE}};
+constexpr const char *MSR_GUID = "e3c9e316-0b5c-4db8-817d-f92df00215ae";
 
-const GUID kPartitionRecoveryGuid = {0xDE94BBA4, 0x06D1, 0x4D40, {0xA1, 0x6A, 0xBF, 0xD5, 0x01, 0x79, 0xD6, 0xAC}};
+constexpr const char *WINDOWS_RECOVERY_GUID = "de94bba4-06d1-4d40-a16a-bfd50179d6ac";
 
-DiskBusType ConvertBusType(STORAGE_BUS_TYPE type) {
-    switch (type) {
-    case BusTypeAta:
-    case BusTypeSata:
-        return DiskBusType::SATA;
+constexpr const char *MICROSOFT_BASIC_DATA_GUID = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7";
 
-    case BusTypeNvme:
-        return DiskBusType::NVMe;
+std::string ReadFile(const fs::path &path) {
+    std::ifstream file(path);
 
-    case BusTypeUsb:
-        return DiskBusType::USB;
+    if (!file.is_open())
+        return {};
 
-    case BusTypeScsi:
-    case BusTypeSas:
-        return DiskBusType::SAS;
+    std::string value;
+    std::getline(file, value);
 
-    default:
-        return DiskBusType::Unknown;
-    }
+    return value;
 }
 
-bool QueryStorageDescriptor(HANDLE disk, DiskInfo &info) {
-    STORAGE_PROPERTY_QUERY query{};
-    query.PropertyId = StorageDeviceProperty;
-    query.QueryType = PropertyStandardQuery;
+std::string Trim(std::string value) {
+    while (!value.empty() && (value.back() == '\n' || value.back() == '\r' || value.back() == ' ' || value.back() == '\t')) {
+        value.pop_back();
+    }
 
-    BYTE buffer[1024]{};
-    DWORD returned = 0;
+    return value;
+}
 
-    if (!DeviceIoControl(disk, IOCTL_STORAGE_QUERY_PROPERTY, &query, sizeof(query), buffer, sizeof(buffer), &returned, nullptr)) {
+std::string ToLower(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    return value;
+}
+
+std::string RunCommand(const std::string &command) {
+    FILE *pipe = popen(command.c_str(), "r");
+
+    if (!pipe)
+        return {};
+
+    char buffer[512];
+    std::string output;
+
+    while (fgets(buffer, sizeof(buffer), pipe))
+        output += buffer;
+
+    pclose(pipe);
+
+    return Trim(output);
+}
+
+bool IsPhysicalDisk(const fs::path &path) {
+    const std::string name = path.filename().string();
+
+    if (name.rfind("loop", 0) == 0)
         return false;
-    }
 
-    auto *descriptor = reinterpret_cast<STORAGE_DEVICE_DESCRIPTOR *>(buffer);
+    if (name.rfind("ram", 0) == 0)
+        return false;
 
-    info.BusType = ConvertBusType(descriptor->BusType);
-    info.IsUSB = descriptor->BusType == BusTypeUsb;
+    if (name.rfind("zram", 0) == 0)
+        return false;
 
-    STORAGE_PROPERTY_QUERY seekQuery{};
-    seekQuery.PropertyId = StorageDeviceSeekPenaltyProperty;
-    seekQuery.QueryType = PropertyStandardQuery;
+    if (name.rfind("sr", 0) == 0)
+        return false;
 
-    DEVICE_SEEK_PENALTY_DESCRIPTOR seekPenalty{};
-    returned = 0;
+    if (name.rfind("fd", 0) == 0)
+        return false;
 
-    if (DeviceIoControl(disk, IOCTL_STORAGE_QUERY_PROPERTY, &seekQuery, sizeof(seekQuery), &seekPenalty, sizeof(seekPenalty), &returned, nullptr)) {
-        info.IsSSD = !seekPenalty.IncursSeekPenalty;
-    }
-    else {
-        info.IsSSD = descriptor->BusType == BusTypeNvme;
-    }
+    return true;
+}
 
-    if (descriptor->ProductIdOffset) {
-        auto *model = reinterpret_cast<const char *>(buffer) + descriptor->ProductIdOffset;
+DiskBusType DetectBusType(const std::string &device) {
+    const fs::path sysBlock = fs::path("/sys/block") / device;
 
-        int len = MultiByteToWideChar(CP_ACP, 0, model, -1, nullptr, 0);
+    if (device.rfind("nvme", 0) == 0)
+        return DiskBusType::NVMe;
 
-        if (len > 1) {
-            info.Model.resize(len - 1);
+    std::error_code error;
 
-            MultiByteToWideChar(CP_ACP, 0, model, -1, info.Model.data(), len);
+    const fs::path devicePath = sysBlock / "device";
+
+    if (fs::exists(devicePath, error)) {
+        const fs::path resolved = fs::canonical(devicePath, error);
+
+        if (!error) {
+            const std::string path = resolved.string();
+
+            if (path.find("/usb") != std::string::npos)
+                return DiskBusType::USB;
+
+            if (path.find("/sas") != std::string::npos)
+                return DiskBusType::SAS;
         }
     }
 
-    return true;
+    if (device.rfind("sd", 0) == 0)
+        return DiskBusType::SATA;
+
+    if (device.rfind("mmc", 0) == 0)
+        return DiskBusType::SATA;
+
+    return DiskBusType::Unknown;
 }
 
-bool QueryDiskSize(HANDLE disk, DiskInfo &info) {
-    GET_LENGTH_INFORMATION length{};
-    DWORD returned = 0;
+bool DetectSSD(const std::string &device) {
+    const fs::path rotational = fs::path("/sys/block") / device / "queue/rotational";
 
-    if (!DeviceIoControl(disk, IOCTL_DISK_GET_LENGTH_INFO, nullptr, 0, &length, sizeof(length), &returned, nullptr)) {
-        return false;
+    return Trim(ReadFile(rotational)) == "0";
+}
+
+std::uint64_t ReadDiskSize(const std::string &device) {
+    const fs::path sizePath = fs::path("/sys/block") / device / "size";
+
+    const std::string value = Trim(ReadFile(sizePath));
+
+    if (value.empty())
+        return 0;
+
+    try {
+        return std::stoull(value) * 512ULL;
+    }
+    catch (...) {
+        return 0;
+    }
+}
+
+std::uint64_t ReadPartitionSize(const fs::path &partitionPath) {
+    const std::string value = Trim(ReadFile(partitionPath / "size"));
+
+    if (value.empty())
+        return 0;
+
+    try {
+        return std::stoull(value) * 512ULL;
+    }
+    catch (...) {
+        return 0;
+    }
+}
+
+std::string ReadModel(const std::string &device) {
+    const fs::path modelPath = fs::path("/sys/block") / device / "device/model";
+
+    return Trim(ReadFile(modelPath));
+}
+
+bool IsGPT(const std::string &device) {
+    const std::string command = "lsblk -dnro PTTYPE /dev/" + device + " 2>/dev/null";
+
+    return RunCommand(command) == "gpt";
+}
+
+std::string ReadMountPoint(const std::string &device) {
+    std::ifstream mounts("/proc/self/mounts");
+
+    if (!mounts.is_open())
+        return {};
+
+    const std::string target = "/dev/" + device;
+
+    std::string line;
+
+    while (std::getline(mounts, line)) {
+        std::istringstream stream(line);
+
+        std::string source;
+        std::string mountPoint;
+
+        stream >> source >> mountPoint;
+
+        if (source == target)
+            return mountPoint;
     }
 
-    info.Size = length.Length.QuadPart;
-
-    return true;
+    return {};
 }
 
-bool QueryPartitionStyle(HANDLE disk, DiskInfo &info) {
-    BYTE buffer[4096]{};
-    DWORD returned = 0;
+std::uint64_t ReadFreeSpace(const std::string &mountPoint) {
+    if (mountPoint.empty())
+        return 0;
 
-    if (!DeviceIoControl(disk, IOCTL_DISK_GET_DRIVE_LAYOUT_EX, nullptr, 0, buffer, sizeof(buffer), &returned, nullptr)) {
-        return false;
+    struct statvfs info{};
+
+    if (statvfs(mountPoint.c_str(), &info) != 0) {
+        return 0;
     }
 
-    auto *layout = reinterpret_cast<DRIVE_LAYOUT_INFORMATION_EX *>(buffer);
-
-    info.IsGPT = layout->PartitionStyle == PARTITION_STYLE_GPT;
-
-    return true;
+    return static_cast<std::uint64_t>(info.f_bavail) * static_cast<std::uint64_t>(info.f_frsize);
 }
 
-bool IsWindowsInstallationVolume(const std::wstring &volumeName) {
-    const std::wstring systemHive = volumeName + L"Windows\\System32\\Config\\SYSTEM";
-    const DWORD attributes = GetFileAttributesW(systemHive.c_str());
+std::string ReadProperty(const std::string &device, const std::string &property) {
+    const std::string command = "udevadm info --query=property "
+                                "--name=/dev/" +
+                                device + " 2>/dev/null";
 
-    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+    const std::string output = RunCommand(command);
+
+    std::istringstream stream(output);
+
+    std::string line;
+
+    const std::string prefix = property + "=";
+
+    while (std::getline(stream, line)) {
+        if (line.rfind(prefix, 0) == 0)
+            return line.substr(prefix.size());
+    }
+
+    return {};
 }
 
-bool IsDataVolumeLabel(const std::wstring &label) {
-    return CompareStringOrdinal(label.c_str(), -1, L"Data", -1, TRUE) == CSTR_EQUAL;
+std::string ReadPartitionLabel(const std::string &device) {
+    return ReadProperty(device, "ID_FS_LABEL");
+}
+
+std::string ReadFilesystemType(const std::string &device) {
+    return ReadProperty(device, "ID_FS_TYPE");
+}
+
+std::string ReadPartitionTypeGuid(const std::string &device) {
+    return ToLower(ReadProperty(device, "ID_PART_ENTRY_TYPE"));
+}
+
+bool IsWindowsInstallation(const std::string &mountPoint) {
+    if (mountPoint.empty())
+        return false;
+
+    const fs::path systemHive = fs::path(mountPoint) / "Windows/System32/Config/SYSTEM";
+
+    return fs::exists(systemHive);
+}
+
+bool IsDataVolume(const std::string &label) {
+    return ToLower(label) == "data";
+}
+
+PartitionRole DetectPartitionRole(const std::string &device, const std::string &mountPoint, const std::string &label, const std::string &filesystem, bool diskHasWindowsLayout) {
+    /*
+     * Если раздел смонтирован и на нём реально
+     * присутствует Windows — это самый надёжный
+     * способ определения.
+     */
+    if (IsWindowsInstallation(mountPoint))
+        return PartitionRole::Windows;
+
+    const std::string type = ReadPartitionTypeGuid(device);
+
+    /*
+     * EFI System Partition
+     */
+    if (type == EFI_GUID)
+        return PartitionRole::EFI;
+
+    /*
+     * Microsoft Reserved Partition
+     */
+    if (type == MSR_GUID)
+        return PartitionRole::MSR;
+
+    /*
+     * Windows Recovery Environment
+     */
+    if (type == WINDOWS_RECOVERY_GUID)
+        return PartitionRole::Recovery;
+
+    /*
+     * Явно помеченный Data-раздел.
+     */
+    if (IsDataVolume(label))
+        return PartitionRole::Data;
+
+    /*
+     * Windows Basic Data Partition.
+     *
+     * Важная часть:
+     * NTFS + Microsoft Basic Data + наличие
+     * EFI/MSR на этом же диске.
+     *
+     * Это позволяет определить Windows даже
+     * когда раздел сейчас не смонтирован.
+     */
+    if (diskHasWindowsLayout && type == MICROSOFT_BASIC_DATA_GUID && ToLower(filesystem) == "ntfs") {
+        return PartitionRole::Windows;
+    }
+
+    return PartitionRole::Unknown;
 }
 
 } // namespace
@@ -126,185 +309,122 @@ bool IsDataVolumeLabel(const std::wstring &label) {
 std::vector<DiskInfo> DiskManager::Enumerate() {
     std::vector<DiskInfo> disks;
 
-    for (DWORD number = 0;; ++number) {
-        std::wstring path = L"\\\\.\\PhysicalDrive" + std::to_wstring(number);
+    const fs::path blockPath("/sys/block");
 
-        HANDLE disk = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    std::error_code error;
 
-        if (disk == INVALID_HANDLE_VALUE) {
-            if (GetLastError() == ERROR_FILE_NOT_FOUND)
-                break;
+    if (!fs::exists(blockPath, error))
+        return disks;
 
+    for (const auto &entry : fs::directory_iterator(blockPath, error)) {
+        if (error)
+            break;
+
+        if (!IsPhysicalDisk(entry.path()))
             continue;
-        }
+
+        const std::string device = entry.path().filename().string();
 
         DiskInfo info{};
-        info.Number = number;
 
-        QueryStorageDescriptor(disk, info);
-        QueryDiskSize(disk, info);
-        QueryPartitionStyle(disk, info);
-
-        CloseHandle(disk);
+        info.Device = device;
+        info.Model = ReadModel(device);
+        info.Size = ReadDiskSize(device);
+        info.BusType = DetectBusType(device);
+        info.IsSSD = DetectSSD(device);
+        info.IsUSB = info.BusType == DiskBusType::USB;
+        info.IsGPT = IsGPT(device);
 
         EnumeratePartitions(info);
 
         disks.push_back(std::move(info));
     }
 
+    std::sort(disks.begin(), disks.end(), [](const DiskInfo &a, const DiskInfo &b) { return a.Device < b.Device; });
+
+    for (std::uint32_t i = 0; i < disks.size(); ++i) {
+        disks[i].Number = i;
+    }
+
     return disks;
 }
-namespace {
-bool QueryDriveLayout(DWORD diskNumber, DRIVE_LAYOUT_INFORMATION_EX *&layout) {
-    layout = nullptr;
-
-    std::wstring path = L"\\\\.\\PhysicalDrive" + std::to_wstring(diskNumber);
-
-    HANDLE disk = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
-
-    if (disk == INVALID_HANDLE_VALUE)
-        return false;
-
-    DWORD size = sizeof(DRIVE_LAYOUT_INFORMATION_EX) + sizeof(PARTITION_INFORMATION_EX) * 128;
-
-    auto *buffer = new BYTE[size]{};
-
-    DWORD returned = 0;
-
-    if (!DeviceIoControl(disk, IOCTL_DISK_GET_DRIVE_LAYOUT_EX, nullptr, 0, buffer, size, &returned, nullptr)) {
-        delete[] buffer;
-        CloseHandle(disk);
-        return false;
-    }
-
-    CloseHandle(disk);
-
-    layout = reinterpret_cast<DRIVE_LAYOUT_INFORMATION_EX *>(buffer);
-
-    return true;
-}
-} // namespace
 
 void DiskManager::EnumeratePartitions(DiskInfo &disk) {
-    DRIVE_LAYOUT_INFORMATION_EX *layout = nullptr;
+    const fs::path blockPath = fs::path("/sys/block") / disk.Device;
 
-    if (!QueryDriveLayout(disk.Number, layout))
+    std::error_code error;
+
+    if (!fs::exists(blockPath, error))
         return;
 
-    wchar_t volumeName[MAX_PATH]{};
+    /*
+     * Сначала определяем, есть ли на диске
+     * характерная Windows-разметка.
+     */
+    bool hasEFI = false;
+    bool hasMSR = false;
 
-    HANDLE find = FindFirstVolumeW(volumeName, ARRAYSIZE(volumeName));
+    for (const auto &entry : fs::directory_iterator(blockPath, error)) {
+        if (error)
+            break;
 
-    if (find == INVALID_HANDLE_VALUE) {
-        delete[] reinterpret_cast<BYTE *>(layout);
-        return;
+        if (!fs::exists(entry.path() / "partition", error)) {
+            continue;
+        }
+
+        const std::string partition = entry.path().filename().string();
+
+        const std::string type = ReadPartitionTypeGuid(partition);
+
+        if (type == EFI_GUID)
+            hasEFI = true;
+
+        if (type == MSR_GUID)
+            hasMSR = true;
     }
 
-    do {
-        std::wstring volumePath = volumeName;
-        volumePath.pop_back(); // убрать завершающий '\'
+    const bool diskHasWindowsLayout = disk.IsGPT && hasEFI && hasMSR;
 
-        HANDLE volume = CreateFileW(volumePath.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
-
-        if (volume == INVALID_HANDLE_VALUE)
-            continue;
-
-        BYTE extentBuffer[sizeof(VOLUME_DISK_EXTENTS) + sizeof(DISK_EXTENT) * 32]{};
-
-        auto *extents = reinterpret_cast<VOLUME_DISK_EXTENTS *>(extentBuffer);
-
-        DWORD returned = 0;
-
-        if (!DeviceIoControl(volume, IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS, nullptr, 0, extents, sizeof(extentBuffer), &returned, nullptr)) {
-            CloseHandle(volume);
-            continue;
-        }
-
-        bool belongsToDisk = false;
-
-        LARGE_INTEGER startOffset{};
-        startOffset.QuadPart = -1;
-
-        for (DWORD i = 0; i < extents->NumberOfDiskExtents; ++i) {
-            if (extents->Extents[i].DiskNumber != disk.Number)
-                continue;
-
-            belongsToDisk = true;
-            startOffset = extents->Extents[i].StartingOffset;
+    /*
+     * Теперь собираем сами разделы.
+     */
+    for (const auto &entry : fs::directory_iterator(blockPath, error)) {
+        if (error)
             break;
-        }
 
-        if (!belongsToDisk) {
-            CloseHandle(volume);
+        if (!fs::exists(entry.path() / "partition", error)) {
             continue;
         }
 
-        PartitionInfo part{};
+        const std::string partition = entry.path().filename().string();
 
-        for (DWORD i = 0; i < layout->PartitionCount; ++i) {
-            const auto &p = layout->PartitionEntry[i];
+        PartitionInfo info{};
 
-            if (p.StartingOffset.QuadPart != startOffset.QuadPart)
-                continue;
+        const std::string number = Trim(ReadFile(entry.path() / "partition"));
 
-            part.Number = p.PartitionNumber;
-            part.Size = p.PartitionLength.QuadPart;
-
-            if (layout->PartitionStyle == PARTITION_STYLE_GPT) {
-                const GUID &type = p.Gpt.PartitionType;
-
-                if (IsEqualGUID(type, kPartitionSystemGuid))
-                    part.Role = PartitionRole::EFI;
-                else if (IsEqualGUID(type, kPartitionMsrGuid))
-                    part.Role = PartitionRole::MSR;
-                else if (IsEqualGUID(type, kPartitionRecoveryGuid))
-                    part.Role = PartitionRole::Recovery;
-            }
-
-            break;
+        try {
+            info.Number = static_cast<std::uint32_t>(std::stoul(number));
+        }
+        catch (...) {
+            continue;
         }
 
-        wchar_t paths[1024]{};
+        info.Size = ReadPartitionSize(entry.path());
 
-        DWORD len = 0;
+        info.MountPoint = ReadMountPoint(partition);
 
-        if (GetVolumePathNamesForVolumeNameW(volumeName, paths, ARRAYSIZE(paths), &len)) {
-            if (paths[0] != 0)
-                part.Letter = paths[0];
+        info.Label = ReadPartitionLabel(partition);
+
+        info.Filesystem = ReadFilesystemType(partition);
+
+        if (!info.MountPoint.empty()) {
+            info.FreeSpace = ReadFreeSpace(info.MountPoint);
         }
 
-        wchar_t label[MAX_PATH]{};
+        info.Role = DetectPartitionRole(partition, info.MountPoint, info.Label, info.Filesystem, diskHasWindowsLayout);
 
-        if (GetVolumeInformationW(volumeName, label, ARRAYSIZE(label), nullptr, nullptr, nullptr, nullptr, 0)) {
-            part.Label = label;
-        }
-
-        if (part.Role == PartitionRole::Unknown) {
-            if (IsWindowsInstallationVolume(volumeName))
-                part.Role = PartitionRole::Windows;
-            else if (IsDataVolumeLabel(part.Label))
-                part.Role = PartitionRole::Data;
-        }
-
-        ULARGE_INTEGER total{};
-        ULARGE_INTEGER free{};
-
-        if (paths[0] != 0) {
-            if (GetDiskFreeSpaceExW(paths, nullptr, &total, &free)) {
-                part.Size = total.QuadPart;
-                part.FreeSpace = free.QuadPart;
-            }
-        }
-
-        disk.Partitions.push_back(std::move(part));
-
-        CloseHandle(volume);
-
-    } while (FindNextVolumeW(find, volumeName, ARRAYSIZE(volumeName)));
-
-    FindVolumeClose(find);
-
-    delete[] reinterpret_cast<BYTE *>(layout);
+        disk.Partitions.push_back(std::move(info));
+    }
 
     std::sort(disk.Partitions.begin(), disk.Partitions.end(), [](const PartitionInfo &a, const PartitionInfo &b) { return a.Number < b.Number; });
 }

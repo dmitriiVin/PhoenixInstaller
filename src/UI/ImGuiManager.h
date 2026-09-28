@@ -1,15 +1,12 @@
 #pragma once
 
-#include <d3d11.h>
-#include <windows.h>
-
+struct GLFWwindow;
 
 class ImGuiManager {
   public:
-    bool Initialize(HWND hwnd, ID3D11Device *device, ID3D11DeviceContext *context);
+    bool Initialize(GLFWwindow *window);
 
     void BeginFrame();
-
     void EndFrame();
 
     void Shutdown();

@@ -1,24 +1,24 @@
 #pragma once
 
+#include <filesystem>
+#include <string>
 #include <unordered_map>
-
-#include <d3d11.h>
 
 #include "Texture.h"
 
 class TextureManager {
   public:
-    static bool Initialize(ID3D11Device *device);
+    static bool Initialize();
 
     static void Shutdown();
 
-    static Texture *Get(int resourceId);
+    static Texture *Get(const std::filesystem::path &path);
 
   private:
-    static Texture *Load(int resourceId);
+    static Texture *Load(const std::filesystem::path &path);
 
   private:
-    static ID3D11Device *s_Device;
+    static bool s_Initialized;
 
-    static std::unordered_map<int, Texture> s_Textures;
+    static std::unordered_map<std::string, Texture> s_Textures;
 };

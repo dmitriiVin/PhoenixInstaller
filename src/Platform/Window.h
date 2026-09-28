@@ -1,19 +1,17 @@
 #pragma once
 
-#include <windows.h>
+#include <GLFW/glfw3.h>
 
 class Window {
   public:
-    bool Create(const wchar_t *title, int width, int height, WNDPROC proc);
+    bool Create(const char *title, int width, int height);
 
     bool ProcessMessages();
 
-    HWND GetHandle() const;
+    GLFWwindow *GetHandle() const;
 
     void Destroy();
 
   private:
-    HWND m_Window = nullptr;
-
-    HINSTANCE m_Instance = nullptr;
+    GLFWwindow *m_Window = nullptr;
 };

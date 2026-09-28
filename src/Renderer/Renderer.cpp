@@ -1,125 +1,50 @@
 #include "Renderer.h"
 
-#pragma comment(lib, "d3d11.lib")
-#pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "dxguid.lib")
-#pragma comment(lib, "d3dcompiler.lib")
+#include <GL/gl.h>
+#include <GLFW/glfw3.h>
 
-bool Renderer::Initialize(HWND hwnd) {
-    m_Window = hwnd;
-
-    if (CreateDevice(D3D_DRIVER_TYPE_HARDWARE))
-        return true;
-
-    if (CreateDevice(D3D_DRIVER_TYPE_WARP))
-        return true;
-
-    if (CreateDevice(D3D_DRIVER_TYPE_REFERENCE))
-        return true;
-
-    return false;
-}
-
-bool Renderer::CreateDevice(D3D_DRIVER_TYPE type) {
-    DXGI_SWAP_CHAIN_DESC sd{};
-
-    sd.BufferCount = 2;
-    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    sd.OutputWindow = m_Window;
-    sd.SampleDesc.Count = 1;
-    sd.Windowed = TRUE;
-
-    // Современный SwapEffect
-    sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-
-    HRESULT hr = D3D11CreateDeviceAndSwapChain(nullptr, type, nullptr, 0, nullptr, 0, D3D11_SDK_VERSION, &sd, &m_SwapChain, &m_Device, nullptr, &m_Context);
-
-    if (FAILED(hr))
+bool Renderer::Initialize(GLFWwindow *window) {
+    if (!window)
         return false;
 
-    return CreateRenderTarget();
-}
+    m_Window = window;
 
-bool Renderer::CreateRenderTarget() {
-    ID3D11Texture2D *backBuffer = nullptr;
+    glfwGetFramebufferSize(m_Window, reinterpret_cast<int *>(&m_Width), reinterpret_cast<int *>(&m_Height));
 
-    HRESULT hr = m_SwapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
+    glfwMakeContextCurrent(m_Window);
 
-    if (FAILED(hr))
-        return false;
-
-    hr = m_Device->CreateRenderTargetView(backBuffer, nullptr, &m_RenderTarget);
-
-    backBuffer->Release();
-
-    return SUCCEEDED(hr);
+    return true;
 }
 
 void Renderer::BeginFrame() {
-    if (!m_RenderTarget)
+    if (!m_Window)
         return;
 
-    static constexpr float clearColor[4] = {0.10f, 0.10f, 0.10f, 1.0f};
+    glViewport(0, 0, static_cast<GLsizei>(m_Width), static_cast<GLsizei>(m_Height));
 
-    m_Context->OMSetRenderTargets(1, &m_RenderTarget, nullptr);
+    glClearColor(0.10f, 0.10f, 0.10f, 1.0f);
 
-    m_Context->ClearRenderTargetView(m_RenderTarget, clearColor);
-}
-
-void Renderer::Resize(UINT width, UINT height) {
-    if (!m_SwapChain)
-        return;
-
-    if (width == 0 || height == 0)
-        return;
-
-    if (m_RenderTarget) {
-        m_RenderTarget->Release();
-        m_RenderTarget = nullptr;
-    }
-
-    m_Context->OMSetRenderTargets(0, nullptr, nullptr);
-
-    HRESULT hr = m_SwapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
-
-    if (FAILED(hr))
-        return;
-
-    CreateRenderTarget();
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void Renderer::EndFrame() {
-    if (m_SwapChain)
-        m_SwapChain->Present(1, 0);
+    if (!m_Window)
+        return;
+
+    glfwSwapBuffers(m_Window);
+}
+
+void Renderer::Resize(std::uint32_t width, std::uint32_t height) {
+    m_Width = width;
+    m_Height = height;
+
+    if (m_Window) {
+        glViewport(0, 0, static_cast<GLsizei>(width), static_cast<GLsizei>(height));
+    }
 }
 
 void Renderer::Shutdown() {
-    if (m_RenderTarget) {
-        m_RenderTarget->Release();
-        m_RenderTarget = nullptr;
-    }
-
-    if (m_SwapChain) {
-        m_SwapChain->Release();
-        m_SwapChain = nullptr;
-    }
-
-    if (m_Context) {
-        m_Context->Release();
-        m_Context = nullptr;
-    }
-
-    if (m_Device) {
-        m_Device->Release();
-        m_Device = nullptr;
-    }
-}
-
-ID3D11Device *Renderer::GetDevice() const {
-    return m_Device;
-}
-
-ID3D11DeviceContext *Renderer::GetContext() const {
-    return m_Context;
+    m_Window = nullptr;
+    m_Width = 0;
+    m_Height = 0;
 }

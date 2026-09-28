@@ -23,29 +23,34 @@ enum class PartitionRole {
 
 struct PartitionInfo {
     // Номер раздела на физическом диске
-    uint32_t Number = 0;
+    std::uint32_t Number = 0;
 
-    // Буква тома (C, D, E...), 0 если отсутствует
-    wchar_t Letter = 0;
+    // Точка монтирования, пустая если раздел не смонтирован
+    std::string MountPoint;
 
-    // Метка тома ("Windows", "Data"...)
-    std::wstring Label;
+    // Метка тома
+    std::string Label;
+
+    // Файловая система: ntfs, vfat, ext4 и т.д.
+    std::string Filesystem;
 
     // Размер раздела
-    uint64_t Size = 0;
+    std::uint64_t Size = 0;
 
     // Свободное место
-    uint64_t FreeSpace = 0;
+    std::uint64_t FreeSpace = 0;
 
+    // Назначение раздела
     PartitionRole Role = PartitionRole::Unknown;
 };
 
 struct DiskInfo {
-    uint32_t Number = 0;
+    std::uint32_t Number = 0;
 
-    std::wstring Model;
+    std::string Device;
+    std::string Model;
 
-    uint64_t Size = 0;
+    std::uint64_t Size = 0;
 
     DiskBusType BusType = DiskBusType::Unknown;
 
@@ -53,6 +58,5 @@ struct DiskInfo {
     bool IsUSB = false;
     bool IsGPT = false;
 
-    // Все разделы данного физического диска
     std::vector<PartitionInfo> Partitions;
 };

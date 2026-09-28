@@ -1,10 +1,13 @@
 #include "ImGuiManager.h"
 
-#include "backends/imgui_impl_dx11.h"
-#include "backends/imgui_impl_win32.h"
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_opengl3.h"
 #include "imgui.h"
 
-bool ImGuiManager::Initialize(HWND hwnd, ID3D11Device *device, ID3D11DeviceContext *context) {
+bool ImGuiManager::Initialize(GLFWwindow *window) {
+    if (!window)
+        return false;
+
     IMGUI_CHECKVERSION();
 
     ImGui::CreateContext();
@@ -15,18 +18,18 @@ bool ImGuiManager::Initialize(HWND hwnd, ID3D11Device *device, ID3D11DeviceConte
 
     ImGui::StyleColorsDark();
 
-    if (!ImGui_ImplWin32_Init(hwnd))
+    if (!ImGui_ImplGlfw_InitForOpenGL(window, true))
         return false;
 
-    if (!ImGui_ImplDX11_Init(device, context))
+    if (!ImGui_ImplOpenGL3_Init("#version 330"))
         return false;
 
     return true;
 }
 
 void ImGuiManager::BeginFrame() {
-    ImGui_ImplDX11_NewFrame();
-    ImGui_ImplWin32_NewFrame();
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
 
     ImGui::NewFrame();
 }
@@ -34,13 +37,13 @@ void ImGuiManager::BeginFrame() {
 void ImGuiManager::EndFrame() {
     ImGui::Render();
 
-    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 void ImGuiManager::Shutdown() {
-    ImGui_ImplDX11_Shutdown();
+    ImGui_ImplOpenGL3_Shutdown();
 
-    ImGui_ImplWin32_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
 
     ImGui::DestroyContext();
 }

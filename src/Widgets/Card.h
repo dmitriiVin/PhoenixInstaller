@@ -7,8 +7,8 @@ class Card {
 
   private:
     struct State {
-        bool Selected = false;
+        bool Selected;
     };
 
-    static inline State s_State;
+    static inline State s_State{false};
 };

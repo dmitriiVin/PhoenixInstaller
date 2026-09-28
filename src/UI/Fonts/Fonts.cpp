@@ -1,15 +1,17 @@
 #include "Fonts.h"
+
 #include "IconsFontAwesome6.h"
 #include "IconsFontAwesome6Brands.h"
+
+#include "Utils/ResourceManager.h"
+
+#include "imgui.h"
 
 #include <cstdint>
 #include <vector>
 
-#include "Utils/ResourceManager.h"
-#include "imgui.h"
-#include "resource.h"
-
 namespace {
+
 std::vector<std::uint8_t> g_FontData;
 std::vector<std::uint8_t> g_SolidIconsData;
 std::vector<std::uint8_t> g_BrandsIconsData;
@@ -50,14 +52,17 @@ ImFont *LoadFont(ImGuiIO &io, float size) {
 
     return font;
 }
+
 } // namespace
 
 bool Fonts::Load() {
     ImGuiIO &io = ImGui::GetIO();
 
-    g_FontData = ResourceManager::Load(IDR_FONT_MAIN);
-    g_SolidIconsData = ResourceManager::Load(IDR_FONT_ICONS);
-    g_BrandsIconsData = ResourceManager::Load(IDR_FONT_BRANDS_ICONS);
+    g_FontData = ResourceManager::Load("assets/fonts/Inter-Regular.otf");
+
+    g_SolidIconsData = ResourceManager::Load("assets/fonts/fa-solid-900.ttf");
+
+    g_BrandsIconsData = ResourceManager::Load("assets/fonts/fa-brands-400.otf");
 
     if (g_FontData.empty() || g_SolidIconsData.empty() || g_BrandsIconsData.empty()) {
         return false;
@@ -68,8 +73,9 @@ bool Fonts::Load() {
     g_Heading = LoadFont(io, 30.0f);
     g_Title = LoadFont(io, 40.0f);
 
-    if (!g_Small || !g_Body || !g_Heading || !g_Title)
+    if (!g_Small || !g_Body || !g_Heading || !g_Title) {
         return false;
+    }
 
     io.FontDefault = g_Body;
 

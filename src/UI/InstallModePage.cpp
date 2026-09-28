@@ -27,7 +27,7 @@ void InstallModePage::Draw() {
     //
     // Переустановка Windows
     //
-    Card::Begin("mode_windows", m_Context.InstallMode == InstallMode::ReinstallWindows);
+    Card::Begin("mode_windows", m_Context.Mode == InstallMode::ReinstallWindows);
 
     ImGui::TextUnformatted("Переустановить Windows");
     ImGui::Spacing();
@@ -35,28 +35,28 @@ void InstallModePage::Draw() {
                        "Разделы данных останутся без изменений.");
 
     if (Card::End())
-        m_Context.InstallMode = InstallMode::ReinstallWindows;
+        m_Context.Mode = InstallMode::ReinstallWindows;
 
     Layout::Space(15);
 
     //
     // Переустановка + Data
     //
-    Card::Begin("mode_data", m_Context.InstallMode == InstallMode::ReinstallWindowsAndFormatData);
+    Card::Begin("mode_data", m_Context.Mode == InstallMode::ReinstallWindowsAndFormatData);
 
     ImGui::TextUnformatted("Переустановить Windows и раздел данных");
     ImGui::Spacing();
     ImGui::TextWrapped("Будут отформатированы раздел Windows и раздел данных.");
 
     if (Card::End())
-        m_Context.InstallMode = InstallMode::ReinstallWindowsAndFormatData;
+        m_Context.Mode = InstallMode::ReinstallWindowsAndFormatData;
 
     Layout::Space(15);
 
     //
     // Полная очистка
     //
-    Card::Begin("mode_clean", m_Context.InstallMode == InstallMode::CleanDisk);
+    Card::Begin("mode_clean", m_Context.Mode == InstallMode::CleanDisk);
 
     ImGui::TextUnformatted("Полностью очистить диск");
     ImGui::Spacing();
@@ -64,7 +64,7 @@ void InstallModePage::Draw() {
                        "Будет создана новая таблица разделов GPT.");
 
     if (Card::End())
-        m_Context.InstallMode = InstallMode::CleanDisk;
+        m_Context.Mode = InstallMode::CleanDisk;
 
     Layout::Space(30);
 

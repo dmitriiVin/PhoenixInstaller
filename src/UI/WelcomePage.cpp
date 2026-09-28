@@ -6,8 +6,9 @@
 #include "UI/Fonts/IconsFontAwesome6Brands.h"
 #include "UI/Layout/Layout.h"
 #include "UI/Widgets/Widgets.h"
-#include "imgui.h"
-#include "resource.h"
+
+#include <cstdlib>
+#include <imgui.h>
 
 void WelcomePage::Draw() {
     Layout::Begin();
@@ -18,13 +19,13 @@ void WelcomePage::Draw() {
     Layout::Space(40);
 
     // Главный заголовок
-    Texture *logo = TextureManager::Get(IDR_LOGO_PNG);
+    Texture *logo = TextureManager::Get("assets/images/logo.png");
 
-    if (logo) {
+    if (logo && logo->IsValid() && logo->Height() > 0) {
         float logoHeight = Layout::Scale(128.0f);
-        float logoWidth = logoHeight * (static_cast<float>(logo->Width()) / logo->Height());
+        float logoWidth = logoHeight * (static_cast<float>(logo->Width()) / static_cast<float>(logo->Height()));
 
-        ImGui::Image(logo->Get(), ImVec2(logoWidth, logoHeight));
+        ImGui::Image(static_cast<ImTextureID>(logo->Get()), ImVec2(logoWidth, logoHeight));
 
         ImGui::SameLine(0.0f, Layout::Scale(20.0f));
 
@@ -68,7 +69,7 @@ void WelcomePage::Draw() {
     ImGui::SameLine(0.0f, Layout::Scale(18.0f));
 
     if (ImGui::Button(ICON_FA_POWER_OFF "  Выход", Layout::Scale(180.0f, 72.0f))) {
-        PostQuitMessage(0);
+        std::exit(0);
     }
 
     Layout::EndContainer();
