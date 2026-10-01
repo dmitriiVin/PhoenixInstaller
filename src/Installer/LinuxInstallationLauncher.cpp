@@ -299,6 +299,11 @@ bool LinuxInstallationLauncher::CreatePostInstallConfig(const InstallerContext &
 
     json config;
 
+    config["computer"] = {
+        {"change_name", context.ChangeComputerName},
+        {"name", context.ComputerName}
+    };
+
     config["packages"] = json::array();
     config["drivers"] = context.InstallDrivers;
 
@@ -894,7 +899,7 @@ bool LinuxInstallationLauncher::InstallExistingWindows(const InstallerContext &c
      * Проверяем наличие ISO.
      */
     /*============================================================================================*/
-    const std::filesystem::path isoPath = "/run/media/systemsupport/Ventoy/Windows10.iso";
+    const std::filesystem::path isoPath = "/Windows10.iso";
 
     std::error_code isoError;
 
@@ -1146,9 +1151,24 @@ bool LinuxInstallationLauncher::InstallExistingWindows(const InstallerContext &c
 
     const std::filesystem::path postInstallDirectory = windowsMount / "Programs" / "PostInstall";
 
+    const std::filesystem::path startupDirectory =
+        windowsMount / "ProgramData" / "Microsoft" / "Windows" /
+        "Start Menu" / "Programs" / "Startup";
+
+    const std::filesystem::path psetup =
+        executableDirectory / "assets" / "PSetup.exe";
+
+    if (!std::filesystem::exists(psetup)) {
+        error = "Не найден PSetup.exe:\n\n" + psetup.string();
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+
+        return false;
+    }
+
     const std::filesystem::path sysprepDirectory = windowsMount / "Windows" / "System32" / "Sysprep";
 
-    if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string(), postInstallDirectory.string()}, error)) {
+    if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string(), postInstallDirectory.string(), startupDirectory.string()}, error)) {
         return false;
     }
 
@@ -1175,6 +1195,45 @@ bool LinuxInstallationLauncher::InstallExistingWindows(const InstallerContext &c
 
         return false;
     }
+
+    const std::filesystem::path postInstallPsetup =
+        postInstallDirectory / "PSetup.exe";
+
+    if (!RunPrivilegedCommand(
+            "cp", {psetup.string(), postInstallPsetup.string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    const std::filesystem::path temporaryPsetupCmd =
+        "/tmp/PSetup.cmd";
+
+    {
+        std::ofstream stream(temporaryPsetupCmd);
+
+        if (!stream.is_open()) {
+            error = "Не удалось создать временный PSetup.cmd.";
+            RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+            return false;
+        }
+
+        stream << "@echo off\r\n"
+               << "start \"\" \"C:\\Programs\\PostInstall\\PSetup.exe\"\r\n";
+    }
+
+    const std::filesystem::path startupPsetupCmd =
+        startupDirectory / "PSetup.cmd";
+
+    if (!RunPrivilegedCommand(
+            "cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
+        std::error_code removePsetupError;
+        std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    std::error_code removePsetupError;
+    std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
 
     // if (!RunPrivilegedCommand("cp", {unattend.string(), (pantherDirectory / "unattend.xml").string()}, error)) {
     //     return false;
@@ -1296,7 +1355,7 @@ bool LinuxInstallationLauncher::InstallExistingWindowsAndData(const InstallerCon
     /*
      * Проверяем ISO Windows.
      */
-    const std::filesystem::path isoPath = "/run/media/systemsupport/Ventoy/Windows10.iso";
+    const std::filesystem::path isoPath = "/Windows10.iso";
 
     std::error_code isoError;
 
@@ -1497,7 +1556,22 @@ bool LinuxInstallationLauncher::InstallExistingWindowsAndData(const InstallerCon
 
     const std::filesystem::path postInstallDirectory = windowsMount / "Programs" / "PostInstall";
 
-    if (!RunPrivilegedCommand("mkdir", {"-p", postInstallDirectory.string()}, error)) {
+    const std::filesystem::path startupDirectory =
+        windowsMount / "ProgramData" / "Microsoft" / "Windows" /
+        "Start Menu" / "Programs" / "Startup";
+
+    const std::filesystem::path psetup =
+        executableDirectory / "assets" / "PSetup.exe";
+
+    if (!std::filesystem::exists(psetup)) {
+        error = "Не найден PSetup.exe:\n\n" + psetup.string();
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+
+        return false;
+    }
+
+    if (!RunPrivilegedCommand("mkdir", {"-p", postInstallDirectory.string(), startupDirectory.string()}, error)) {
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
@@ -1526,6 +1600,45 @@ bool LinuxInstallationLauncher::InstallExistingWindowsAndData(const InstallerCon
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
+
+    const std::filesystem::path postInstallPsetup =
+        postInstallDirectory / "PSetup.exe";
+
+    if (!RunPrivilegedCommand(
+            "cp", {psetup.string(), postInstallPsetup.string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    const std::filesystem::path temporaryPsetupCmd =
+        "/tmp/PSetup.cmd";
+
+    {
+        std::ofstream stream(temporaryPsetupCmd);
+
+        if (!stream.is_open()) {
+            error = "Не удалось создать временный PSetup.cmd.";
+            RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+            return false;
+        }
+
+        stream << "@echo off\r\n"
+               << "start \"\" \"C:\\Programs\\PostInstall\\PSetup.exe\"\r\n";
+    }
+
+    const std::filesystem::path startupPsetupCmd =
+        startupDirectory / "PSetup.cmd";
+
+    if (!RunPrivilegedCommand(
+            "cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
+        std::error_code removePsetupError;
+        std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    std::error_code removePsetupError;
+    std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
 
     ReportProgress(0.99f, "Завершение установки...");
 
@@ -1788,7 +1901,7 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
     /*
      * ISO Windows.
      */
-    const std::filesystem::path isoPath = "/run/media/systemsupport/Ventoy/Windows10.iso";
+    const std::filesystem::path isoPath = "/Windows10.iso";
 
     std::error_code isoError;
 
@@ -2053,7 +2166,22 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
 
     const std::filesystem::path postInstallDirectory = windowsMount / "Programs" / "PostInstall";
 
-    if (!RunPrivilegedCommand("mkdir", {"-p", postInstallDirectory.string()}, error)) {
+    const std::filesystem::path startupDirectory =
+        windowsMount / "ProgramData" / "Microsoft" / "Windows" /
+        "Start Menu" / "Programs" / "Startup";
+
+    const std::filesystem::path psetup =
+        executableDirectory / "assets" / "PSetup.exe";
+
+    if (!std::filesystem::exists(psetup)) {
+        error = "Не найден PSetup.exe:\n\n" + psetup.string();
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+
+        return false;
+    }
+
+    if (!RunPrivilegedCommand("mkdir", {"-p", postInstallDirectory.string(), startupDirectory.string()}, error)) {
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
@@ -2082,6 +2210,45 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
+
+    const std::filesystem::path postInstallPsetup =
+        postInstallDirectory / "PSetup.exe";
+
+    if (!RunPrivilegedCommand(
+            "cp", {psetup.string(), postInstallPsetup.string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    const std::filesystem::path temporaryPsetupCmd =
+        "/tmp/PSetup.cmd";
+
+    {
+        std::ofstream stream(temporaryPsetupCmd);
+
+        if (!stream.is_open()) {
+            error = "Не удалось создать временный PSetup.cmd.";
+            RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+            return false;
+        }
+
+        stream << "@echo off\r\n"
+               << "start \"\" \"C:\\Programs\\PostInstall\\PSetup.exe\"\r\n";
+    }
+
+    const std::filesystem::path startupPsetupCmd =
+        startupDirectory / "PSetup.cmd";
+
+    if (!RunPrivilegedCommand(
+            "cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
+        std::error_code removePsetupError;
+        std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    std::error_code removePsetupError;
+    std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
 
     ReportProgress(0.99f, "Завершение установки...");
 
@@ -2205,7 +2372,7 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
         return false;
     }
 
-    const std::filesystem::path isoPath = "/run/media/systemsupport/Ventoy/Windows10.iso";
+    const std::filesystem::path isoPath = "/Windows10.iso";
     std::error_code isoError;
 
     if (!std::filesystem::exists(isoPath, isoError)) {
@@ -2380,7 +2547,22 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
 
     const std::filesystem::path postInstallDirectory = windowsMount / "Programs" / "PostInstall";
 
-    if (!RunPrivilegedCommand("mkdir", {"-p", postInstallDirectory.string()}, error)) {
+    const std::filesystem::path startupDirectory =
+        windowsMount / "ProgramData" / "Microsoft" / "Windows" /
+        "Start Menu" / "Programs" / "Startup";
+
+    const std::filesystem::path psetup =
+        executableDirectory / "assets" / "PSetup.exe";
+
+    if (!std::filesystem::exists(psetup)) {
+        error = "Не найден PSetup.exe:\n\n" + psetup.string();
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+
+        return false;
+    }
+
+    if (!RunPrivilegedCommand("mkdir", {"-p", postInstallDirectory.string(), startupDirectory.string()}, error)) {
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
@@ -2409,6 +2591,45 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
+
+    const std::filesystem::path postInstallPsetup =
+        postInstallDirectory / "PSetup.exe";
+
+    if (!RunPrivilegedCommand(
+            "cp", {psetup.string(), postInstallPsetup.string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    const std::filesystem::path temporaryPsetupCmd =
+        "/tmp/PSetup.cmd";
+
+    {
+        std::ofstream stream(temporaryPsetupCmd);
+
+        if (!stream.is_open()) {
+            error = "Не удалось создать временный PSetup.cmd.";
+            RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+            return false;
+        }
+
+        stream << "@echo off\r\n"
+               << "start \"\" \"C:\\Programs\\PostInstall\\PSetup.exe\"\r\n";
+    }
+
+    const std::filesystem::path startupPsetupCmd =
+        startupDirectory / "PSetup.cmd";
+
+    if (!RunPrivilegedCommand(
+            "cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
+        std::error_code removePsetupError;
+        std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    std::error_code removePsetupError;
+    std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
 
     ReportProgress(0.99f, "Завершение установки...");
 
@@ -2502,7 +2723,7 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
     /*
      * Проверяем ISO.
      */
-    const std::filesystem::path isoPath = "/run/media/systemsupport/Ventoy/Windows10.iso";
+    const std::filesystem::path isoPath = "/Windows10.iso";
 
     std::error_code isoError;
 
@@ -2787,9 +3008,24 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
 
     const std::filesystem::path postInstallDirectory = windowsMount / "Programs" / "PostInstall";
 
+    const std::filesystem::path startupDirectory =
+        windowsMount / "ProgramData" / "Microsoft" / "Windows" /
+        "Start Menu" / "Programs" / "Startup";
+
+    const std::filesystem::path psetup =
+        executableDirectory / "assets" / "PSetup.exe";
+
+    if (!std::filesystem::exists(psetup)) {
+        error = "Не найден PSetup.exe:\n\n" + psetup.string();
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+
+        return false;
+    }
+
     const std::filesystem::path sysprepDirectory = windowsMount / "Windows" / "System32" / "Sysprep";
 
-    if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string(), postInstallDirectory.string()}, error)) {
+    if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string(), postInstallDirectory.string(), startupDirectory.string()}, error)) {
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
         return false;
@@ -2825,46 +3061,14 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
         return false;
     }
 
-    // if (!RunPrivilegedCommand("cp", {unattend.string(), (pantherDirectory / "unattend.xml").string()}, error)) {
-    //     RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+    const std::filesystem::path postInstallPsetup =
+        postInstallDirectory / "PSetup.exe";
 
-    //     if (!RunPrivilegedCommand("cp", {unattend.string(), (sysprepDirectory / "unattend.xml").string()}, error)) {
-    //         return false;
-    //     }
-
-    //     return false;
-    // }
-
-    // if (!RunPrivilegedCommand("cp", {setupComplete.string(), (setupScriptsDirectory / "SetupComplete.cmd").string()}, error)) {
-    //     RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
-
-    //     return false;
-    // }
-
-    /*
-     * Проверяем, что оба файла действительно записаны.
-     */
-    // if (!std::filesystem::exists(pantherDirectory / "unattend.xml")) {
-    //     error = "unattend.xml не был скопирован:\n\n" + (pantherDirectory / "unattend.xml").string();
-
-    //     RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
-
-    //     return false;
-    // }
-
-    // if (!std::filesystem::exists(sysprepDirectory / "unattend.xml")) {
-    //     error = "unattend.xml не был скопирован в Sysprep:\n\n" + (sysprepDirectory / "unattend.xml").string();
-
-    //     return false;
-    // }
-
-    // if (!std::filesystem::exists(setupScriptsDirectory / "SetupComplete.cmd")) {
-    //     error = "SetupComplete.cmd не был скопирован:\n\n" + (setupScriptsDirectory / "SetupComplete.cmd").string();
-
-    //     RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
-
-    //     return false;
-    // }
+    if (!RunPrivilegedCommand(
+            "cp", {psetup.string(), postInstallPsetup.string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
 
     ReportProgress(0.99f, "Завершение установки...");
 

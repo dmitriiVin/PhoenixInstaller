@@ -13,7 +13,12 @@
 #include <sstream>
 #include <string>
 
-App::App() : m_InstallPage(m_Context), m_InstallModePage(m_Context), m_WindowsPartitionPage(m_Context), m_ProgramPage(m_Context), m_ConfirmPage(m_Context) {
+App::App() : m_InstallPage(m_Context),
+             m_InstallModePage(m_Context),
+             m_WindowsPartitionPage(m_Context),
+             m_ProgramPage(m_Context),
+             m_ComputerSettingsPage(m_Context),
+             m_ConfirmPage(m_Context) {
 }
 
 bool App::Initialize() {
@@ -145,6 +150,11 @@ void App::Run() {
 
         if (m_ProgramPage.NextRequested()) {
             m_ProgramPage.ResetState();
+            m_PageManager.SetPage(&m_ComputerSettingsPage);
+        }
+
+        if (m_ComputerSettingsPage.NextRequested()) {
+            m_ComputerSettingsPage.ResetState();
             m_PageManager.SetPage(&m_ConfirmPage);
         }
 
@@ -216,6 +226,11 @@ void App::Run() {
             else {
                 m_PageManager.SetPage(&m_InstallModePage);
             }
+        }
+
+        if (m_ComputerSettingsPage.BackRequested()) {
+            m_ComputerSettingsPage.ResetState();
+            m_PageManager.SetPage(&m_ProgramPage);
         }
 
         if (m_ConfirmPage.BackRequested()) {

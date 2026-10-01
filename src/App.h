@@ -15,6 +15,7 @@
 #include "UI/ProgramPage.h"
 #include "UI/WelcomePage.h"
 #include "UI/WindowsPartitionPage.h"
+#include "UI/ComputerSettingsPage.h"
 
 class App {
   public:
@@ -37,6 +38,7 @@ class App {
     InstallModePage m_InstallModePage;
     WindowsPartitionPage m_WindowsPartitionPage;
     ProgramPage m_ProgramPage;
+    ComputerSettingsPage m_ComputerSettingsPage;
     ConfirmPage m_ConfirmPage;
 
     std::thread m_InstallationThread;

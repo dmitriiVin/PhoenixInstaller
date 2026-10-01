@@ -31,6 +31,9 @@ class InstallerContext {
     // Устанавливать драйверы
     bool InstallDrivers = true;
 
+    bool ChangeComputerName = false;
+    std::string ComputerName;
+
     // Выбранные программы
     std::vector<std::string> SelectedPackages;
 
