@@ -299,10 +299,7 @@ bool LinuxInstallationLauncher::CreatePostInstallConfig(const InstallerContext &
 
     json config;
 
-    config["computer"] = {
-        {"change_name", context.ChangeComputerName},
-        {"name", context.ComputerName}
-    };
+    config["computer"] = {{"change_name", context.ChangeComputerName}, {"name", context.ComputerName}};
 
     config["packages"] = json::array();
     config["drivers"] = context.InstallDrivers;
@@ -1151,12 +1148,9 @@ bool LinuxInstallationLauncher::InstallExistingWindows(const InstallerContext &c
 
     const std::filesystem::path postInstallDirectory = windowsMount / "Programs" / "PostInstall";
 
-    const std::filesystem::path startupDirectory =
-        windowsMount / "ProgramData" / "Microsoft" / "Windows" /
-        "Start Menu" / "Programs" / "Startup";
+    const std::filesystem::path startupDirectory = windowsMount / "ProgramData" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup";
 
-    const std::filesystem::path psetup =
-        executableDirectory / "assets" / "PSetup.exe";
+    const std::filesystem::path psetup = executableDirectory / "assets" / "PSetup.exe";
 
     if (!std::filesystem::exists(psetup)) {
         error = "Не найден PSetup.exe:\n\n" + psetup.string();
@@ -1196,17 +1190,14 @@ bool LinuxInstallationLauncher::InstallExistingWindows(const InstallerContext &c
         return false;
     }
 
-    const std::filesystem::path postInstallPsetup =
-        postInstallDirectory / "PSetup.exe";
+    const std::filesystem::path postInstallPsetup = postInstallDirectory / "PSetup.exe";
 
-    if (!RunPrivilegedCommand(
-            "cp", {psetup.string(), postInstallPsetup.string()}, error)) {
+    if (!RunPrivilegedCommand("cp", {psetup.string(), postInstallPsetup.string()}, error)) {
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
 
-    const std::filesystem::path temporaryPsetupCmd =
-        "/tmp/PSetup.cmd";
+    const std::filesystem::path temporaryPsetupCmd = "/tmp/PSetup.cmd";
 
     {
         std::ofstream stream(temporaryPsetupCmd);
@@ -1221,11 +1212,9 @@ bool LinuxInstallationLauncher::InstallExistingWindows(const InstallerContext &c
                << "start \"\" \"C:\\Programs\\PostInstall\\PSetup.exe\"\r\n";
     }
 
-    const std::filesystem::path startupPsetupCmd =
-        startupDirectory / "PSetup.cmd";
+    const std::filesystem::path startupPsetupCmd = startupDirectory / "PSetup.cmd";
 
-    if (!RunPrivilegedCommand(
-            "cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
+    if (!RunPrivilegedCommand("cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
         std::error_code removePsetupError;
         std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
@@ -1235,29 +1224,27 @@ bool LinuxInstallationLauncher::InstallExistingWindows(const InstallerContext &c
     std::error_code removePsetupError;
     std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
 
-    // if (!RunPrivilegedCommand("cp", {unattend.string(), (pantherDirectory / "unattend.xml").string()}, error)) {
-    //     return false;
-    // }
+    if (!RunPrivilegedCommand("cp", {unattend.string(), (pantherDirectory / "unattend.xml").string()}, error)) {
+        return false;
+    }
 
-    // if (!RunPrivilegedCommand("cp", {unattend.string(), (sysprepDirectory / "unattend.xml").string()}, error)) {
-    //     return false;
-    // }
+    if (!RunPrivilegedCommand("cp", {unattend.string(), (sysprepDirectory / "unattend.xml").string()}, error)) {
+        return false;
+    }
 
+    /*
+     * SetupComplete.cmd пока НЕ копируем.
+     * Оставляем код здесь закомментированным для последующего включения.
+     */
     // if (!RunPrivilegedCommand("cp", {setupComplete.string(), (setupScriptsDirectory / "SetupComplete.cmd").string()}, error)) {
     //     return false;
     // }
 
-    // if (!std::filesystem::exists(pantherDirectory / "unattend.xml")) {
-    //     error = "unattend.xml не был скопирован:\n\n" + (pantherDirectory / "unattend.xml").string();
+    if (!std::filesystem::exists(pantherDirectory / "unattend.xml")) {
+        error = "unattend.xml не был скопирован:\n\n" + (pantherDirectory / "unattend.xml").string();
 
-    //     return false;
-    // }
-
-    // if (!std::filesystem::exists(sysprepDirectory / "unattend.xml")) {
-    //     error = "unattend.xml не был скопирован в Sysprep:\n\n" + (sysprepDirectory / "unattend.xml").string();
-
-    //     return false;
-    // }
+        return false;
+    }
 
     // if (!std::filesystem::exists(setupScriptsDirectory / "SetupComplete.cmd")) {
     //     error = "SetupComplete.cmd не был скопирован:\n\n" + (setupScriptsDirectory / "SetupComplete.cmd").string();
@@ -1554,14 +1541,62 @@ bool LinuxInstallationLauncher::InstallExistingWindowsAndData(const InstallerCon
      */
     ReportProgress(0.94f, "Создание конфигурации PostInstall...");
 
+    const std::filesystem::path scriptsDirectory = executableDirectory / "assets" / "Scripts";
+
+    const std::filesystem::path unattend = scriptsDirectory / "unattend.xml";
+
+    const std::filesystem::path setupComplete = scriptsDirectory / "SetupComplete.cmd";
+
+    if (!std::filesystem::exists(unattend)) {
+        error = "Не найден unattend.xml:\n\n" + unattend.string();
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!std::filesystem::exists(setupComplete)) {
+        error = "Не найден SetupComplete.cmd:\n\n" + setupComplete.string();
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    const std::filesystem::path pantherDirectory = windowsMount / "Windows" / "Panther";
+
+    const std::filesystem::path setupScriptsDirectory = windowsMount / "Windows" / "Setup" / "Scripts";
+
+    const std::filesystem::path sysprepDirectory = windowsMount / "Windows" / "System32" / "Sysprep";
+
+    if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!RunPrivilegedCommand("cp", {unattend.string(), (pantherDirectory / "unattend.xml").string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!RunPrivilegedCommand("cp", {unattend.string(), (sysprepDirectory / "unattend.xml").string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    /*
+     * SetupComplete.cmd пока НЕ копируем.
+     * Код оставлен закомментированным для последующего включения.
+     */
+    // if (!RunPrivilegedCommand(
+    //         "cp", {setupComplete.string(), (setupScriptsDirectory / "SetupComplete.cmd").string()}, error)) {
+    //     RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+    //     return false;
+    // }
+
     const std::filesystem::path postInstallDirectory = windowsMount / "Programs" / "PostInstall";
 
-    const std::filesystem::path startupDirectory =
-        windowsMount / "ProgramData" / "Microsoft" / "Windows" /
-        "Start Menu" / "Programs" / "Startup";
+    const std::filesystem::path startupDirectory = windowsMount / "ProgramData" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup";
 
-    const std::filesystem::path psetup =
-        executableDirectory / "assets" / "PSetup.exe";
+    const std::filesystem::path psetup = executableDirectory / "assets" / "PSetup.exe";
 
     if (!std::filesystem::exists(psetup)) {
         error = "Не найден PSetup.exe:\n\n" + psetup.string();
@@ -1601,17 +1636,14 @@ bool LinuxInstallationLauncher::InstallExistingWindowsAndData(const InstallerCon
         return false;
     }
 
-    const std::filesystem::path postInstallPsetup =
-        postInstallDirectory / "PSetup.exe";
+    const std::filesystem::path postInstallPsetup = postInstallDirectory / "PSetup.exe";
 
-    if (!RunPrivilegedCommand(
-            "cp", {psetup.string(), postInstallPsetup.string()}, error)) {
+    if (!RunPrivilegedCommand("cp", {psetup.string(), postInstallPsetup.string()}, error)) {
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
 
-    const std::filesystem::path temporaryPsetupCmd =
-        "/tmp/PSetup.cmd";
+    const std::filesystem::path temporaryPsetupCmd = "/tmp/PSetup.cmd";
 
     {
         std::ofstream stream(temporaryPsetupCmd);
@@ -1626,11 +1658,9 @@ bool LinuxInstallationLauncher::InstallExistingWindowsAndData(const InstallerCon
                << "start \"\" \"C:\\Programs\\PostInstall\\PSetup.exe\"\r\n";
     }
 
-    const std::filesystem::path startupPsetupCmd =
-        startupDirectory / "PSetup.cmd";
+    const std::filesystem::path startupPsetupCmd = startupDirectory / "PSetup.cmd";
 
-    if (!RunPrivilegedCommand(
-            "cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
+    if (!RunPrivilegedCommand("cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
         std::error_code removePsetupError;
         std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
@@ -2164,14 +2194,62 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
      */
     ReportProgress(0.94f, "Создание config.json...");
 
+    const std::filesystem::path scriptsDirectory = executableDirectory / "assets" / "Scripts";
+
+    const std::filesystem::path unattend = scriptsDirectory / "unattend.xml";
+
+    const std::filesystem::path setupComplete = scriptsDirectory / "SetupComplete.cmd";
+
+    if (!std::filesystem::exists(unattend)) {
+        error = "Не найден unattend.xml:\n\n" + unattend.string();
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!std::filesystem::exists(setupComplete)) {
+        error = "Не найден SetupComplete.cmd:\n\n" + setupComplete.string();
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    const std::filesystem::path pantherDirectory = windowsMount / "Windows" / "Panther";
+
+    const std::filesystem::path setupScriptsDirectory = windowsMount / "Windows" / "Setup" / "Scripts";
+
+    const std::filesystem::path sysprepDirectory = windowsMount / "Windows" / "System32" / "Sysprep";
+
+    if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!RunPrivilegedCommand("cp", {unattend.string(), (pantherDirectory / "unattend.xml").string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!RunPrivilegedCommand("cp", {unattend.string(), (sysprepDirectory / "unattend.xml").string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    /*
+     * SetupComplete.cmd пока НЕ копируем.
+     * Код оставлен закомментированным для последующего включения.
+     */
+    // if (!RunPrivilegedCommand(
+    //         "cp", {setupComplete.string(), (setupScriptsDirectory / "SetupComplete.cmd").string()}, error)) {
+    //     RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+    //     return false;
+    // }
+
     const std::filesystem::path postInstallDirectory = windowsMount / "Programs" / "PostInstall";
 
-    const std::filesystem::path startupDirectory =
-        windowsMount / "ProgramData" / "Microsoft" / "Windows" /
-        "Start Menu" / "Programs" / "Startup";
+    const std::filesystem::path startupDirectory = windowsMount / "ProgramData" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup";
 
-    const std::filesystem::path psetup =
-        executableDirectory / "assets" / "PSetup.exe";
+    const std::filesystem::path psetup = executableDirectory / "assets" / "PSetup.exe";
 
     if (!std::filesystem::exists(psetup)) {
         error = "Не найден PSetup.exe:\n\n" + psetup.string();
@@ -2211,17 +2289,14 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
         return false;
     }
 
-    const std::filesystem::path postInstallPsetup =
-        postInstallDirectory / "PSetup.exe";
+    const std::filesystem::path postInstallPsetup = postInstallDirectory / "PSetup.exe";
 
-    if (!RunPrivilegedCommand(
-            "cp", {psetup.string(), postInstallPsetup.string()}, error)) {
+    if (!RunPrivilegedCommand("cp", {psetup.string(), postInstallPsetup.string()}, error)) {
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
 
-    const std::filesystem::path temporaryPsetupCmd =
-        "/tmp/PSetup.cmd";
+    const std::filesystem::path temporaryPsetupCmd = "/tmp/PSetup.cmd";
 
     {
         std::ofstream stream(temporaryPsetupCmd);
@@ -2236,11 +2311,9 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
                << "start \"\" \"C:\\Programs\\PostInstall\\PSetup.exe\"\r\n";
     }
 
-    const std::filesystem::path startupPsetupCmd =
-        startupDirectory / "PSetup.cmd";
+    const std::filesystem::path startupPsetupCmd = startupDirectory / "PSetup.cmd";
 
-    if (!RunPrivilegedCommand(
-            "cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
+    if (!RunPrivilegedCommand("cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
         std::error_code removePsetupError;
         std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
@@ -2545,14 +2618,62 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
 
     ReportProgress(0.97f, "Создание конфигурации PostInstall...");
 
+    const std::filesystem::path scriptsDirectory = executableDirectory / "assets" / "Scripts";
+
+    const std::filesystem::path unattend = scriptsDirectory / "unattend.xml";
+
+    const std::filesystem::path setupComplete = scriptsDirectory / "SetupComplete.cmd";
+
+    if (!std::filesystem::exists(unattend)) {
+        error = "Не найден unattend.xml:\n\n" + unattend.string();
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!std::filesystem::exists(setupComplete)) {
+        error = "Не найден SetupComplete.cmd:\n\n" + setupComplete.string();
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    const std::filesystem::path pantherDirectory = windowsMount / "Windows" / "Panther";
+
+    const std::filesystem::path setupScriptsDirectory = windowsMount / "Windows" / "Setup" / "Scripts";
+
+    const std::filesystem::path sysprepDirectory = windowsMount / "Windows" / "System32" / "Sysprep";
+
+    if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!RunPrivilegedCommand("cp", {unattend.string(), (pantherDirectory / "unattend.xml").string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!RunPrivilegedCommand("cp", {unattend.string(), (sysprepDirectory / "unattend.xml").string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    /*
+     * SetupComplete.cmd пока НЕ копируем.
+     * Код оставлен закомментированным для последующего включения.
+     */
+    // if (!RunPrivilegedCommand(
+    //         "cp", {setupComplete.string(), (setupScriptsDirectory / "SetupComplete.cmd").string()}, error)) {
+    //     RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+    //     return false;
+    // }
+
     const std::filesystem::path postInstallDirectory = windowsMount / "Programs" / "PostInstall";
 
-    const std::filesystem::path startupDirectory =
-        windowsMount / "ProgramData" / "Microsoft" / "Windows" /
-        "Start Menu" / "Programs" / "Startup";
+    const std::filesystem::path startupDirectory = windowsMount / "ProgramData" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup";
 
-    const std::filesystem::path psetup =
-        executableDirectory / "assets" / "PSetup.exe";
+    const std::filesystem::path psetup = executableDirectory / "assets" / "PSetup.exe";
 
     if (!std::filesystem::exists(psetup)) {
         error = "Не найден PSetup.exe:\n\n" + psetup.string();
@@ -2592,17 +2713,14 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
         return false;
     }
 
-    const std::filesystem::path postInstallPsetup =
-        postInstallDirectory / "PSetup.exe";
+    const std::filesystem::path postInstallPsetup = postInstallDirectory / "PSetup.exe";
 
-    if (!RunPrivilegedCommand(
-            "cp", {psetup.string(), postInstallPsetup.string()}, error)) {
+    if (!RunPrivilegedCommand("cp", {psetup.string(), postInstallPsetup.string()}, error)) {
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
 
-    const std::filesystem::path temporaryPsetupCmd =
-        "/tmp/PSetup.cmd";
+    const std::filesystem::path temporaryPsetupCmd = "/tmp/PSetup.cmd";
 
     {
         std::ofstream stream(temporaryPsetupCmd);
@@ -2617,11 +2735,9 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
                << "start \"\" \"C:\\Programs\\PostInstall\\PSetup.exe\"\r\n";
     }
 
-    const std::filesystem::path startupPsetupCmd =
-        startupDirectory / "PSetup.cmd";
+    const std::filesystem::path startupPsetupCmd = startupDirectory / "PSetup.cmd";
 
-    if (!RunPrivilegedCommand(
-            "cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
+    if (!RunPrivilegedCommand("cp", {temporaryPsetupCmd.string(), startupPsetupCmd.string()}, error)) {
         std::error_code removePsetupError;
         std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
@@ -2656,25 +2772,20 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
 
     if (!context.SelectedDisk) {
         error = "Диск для установки не выбран.";
-
         return false;
     }
 
     const std::string disk = NormalizeDevice(context.SelectedDisk->Device);
-
     ExistingPartitions partitions;
 
     ReportProgress(0.06f, "Поиск разделов Windows...");
 
-    if (!FindExistingPartitions(context, partitions, error)) {
+    if (!FindExistingPartitions(context, partitions, error))
         return false;
-    }
 
     if (partitions.windows.empty()) {
         error = "Раздел Windows (C:) не найден.\n\n"
-                "Невозможно безопасно выполнить "
-                "переустановку Windows.";
-
+                "Невозможно безопасно выполнить переустановку Windows.";
         return false;
     }
 
@@ -2682,9 +2793,8 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
 
     if (formatData && partitions.data.empty()) {
         error = "Раздел D: не найден.\n\n"
-                "Для выбранного режима установки "
-                "необходим существующий раздел данных.";
-
+                "Для выбранного режима установки необходим существующий "
+                "раздел данных.";
         return false;
     }
 
@@ -2702,94 +2812,60 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
 
     std::cout << '\n';
 
-    /*
-     * Windows-раздел не должен быть смонтирован,
-     * потому что WIM применяется непосредственно
-     * к block device.
-     */
+    // Windows не должен быть смонтирован во время применения WIM.
     ReportProgress(0.08f, "Проверка Windows-раздела...");
 
     std::string mountOutput;
     std::string mountError;
 
     if (RunCommandCapture("findmnt", {"-rn", "-S", partitions.windows}, mountOutput, mountError)) {
-        error = "Раздел Windows уже смонтирован:\n\n" + mountOutput +
-                "\nПеред установкой его необходимо "
-                "размонтировать.";
 
+        error = "Раздел Windows уже смонтирован:\n\n" + mountOutput + "\nПеред установкой его необходимо размонтировать.";
         return false;
     }
 
-    /*
-     * Проверяем ISO.
-     */
     const std::filesystem::path isoPath = "/Windows10.iso";
+    const std::filesystem::path isoMount = "/mnt/winiso";
+    const std::filesystem::path windowsMount = "/mnt/windows";
 
     std::error_code isoError;
 
     if (!std::filesystem::exists(isoPath, isoError)) {
-        if (isoError) {
-            error = "Не удалось проверить ISO Windows:\n\n" + isoPath.string() + "\n\nОшибка: " + isoError.message();
-        }
-        else {
-            error = "Не найден ISO Windows:\n\n" + isoPath.string();
-        }
+        error = isoError ? "Не удалось проверить ISO Windows:\n\n" + isoPath.string() + "\n\nОшибка: " + isoError.message() : "Не найден ISO Windows:\n\n" + isoPath.string();
 
         return false;
     }
 
-    const std::filesystem::path isoMount = "/mnt/winiso";
-
-    const std::filesystem::path windowsMount = "/mnt/windows";
-
-    if (!RunCommand("mkdir", {"-p", isoMount.string(), windowsMount.string()}, error)) {
+    if (!RunCommand("mkdir", {"-p", isoMount.string(), windowsMount.string()}, error))
         return false;
-    }
 
-    /*
-     * Очищаем старые mount points.
-     */
     std::string cleanupError;
 
     RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
     RunPrivilegedCommand("umount", {isoMount.string()}, cleanupError);
 
-    /*
-     * Форматируем Windows.
-     */
+    // Форматирование Windows.
     ReportProgress(0.10f, "Форматирование Windows-раздела...");
-
     std::cout << "\nФорматирование Windows-раздела...\n";
 
-    if (!RunPrivilegedCommand("mkfs.ntfs", {"-f", "-L", "Windows", partitions.windows}, error)) {
+    if (!RunPrivilegedCommand("mkfs.ntfs", {"-f", "-L", "Windows", partitions.windows}, error))
         return false;
-    }
 
-    /*
-     * Если выбран режим Windows + Data,
-     * форматируем Data.
-     */
     if (formatData) {
         ReportProgress(0.12f, "Форматирование Data-раздела...");
-
         std::cout << "\nФорматирование Data-раздела...\n";
 
-        if (!RunPrivilegedCommand("mkfs.ntfs", {"-f", "-L", "Data", partitions.data}, error)) {
+        if (!RunPrivilegedCommand("mkfs.ntfs", {"-f", "-L", "Data", partitions.data}, error))
             return false;
-        }
     }
 
-    /*
-     * Монтируем ISO.
-     */
+    // Монтирование ISO.
     ReportProgress(0.15f, "Монтирование Windows ISO...");
-
     std::cout << "\nМонтирование Windows ISO...\n";
 
-    if (!RunPrivilegedCommand("mount", {"-o", "loop,ro", isoPath.string(), isoMount.string()}, error)) {
+    if (!RunPrivilegedCommand("mount", {"-o", "loop,ro", isoPath.string(), isoMount.string()}, error))
         return false;
-    }
 
     const std::filesystem::path installWim = isoMount / "sources" / "install.wim";
 
@@ -2797,22 +2873,12 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
         RunPrivilegedCommand("umount", {isoMount.string()}, cleanupError);
 
         error = "В ISO не найден:\n\n" + installWim.string();
-
         return false;
     }
 
-    /*
-     * Критически важно:
-     *
-     * NTFS НЕ монтируем.
-     *
-     * WIM применяется непосредственно
-     * к block device.
-     */
+    // Применяем WIM напрямую к Windows-разделу.
     ReportProgress(0.20f, "Применение Windows...");
-
-    std::cout << "\nПрименение Windows image "
-              << "(index 2)...\n";
+    std::cout << "\nПрименение Windows image (index 2)...\n";
 
     if (!RunPrivilegedCommandWithProgress(
             "wimlib-imagex", {"apply", installWim.string(), "2", partitions.windows},
@@ -2822,46 +2888,36 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
                 ReportProgress(globalProgress, "Установка Windows... " + std::to_string(static_cast<int>(wimProgress * 100.0f)) + "%");
             },
             error)) {
+
         RunPrivilegedCommand("umount", {isoMount.string()}, cleanupError);
 
         return false;
     }
 
-    /*
-     * ISO больше не нужен.
-     */
     ReportProgress(0.80f, "Windows image применена.");
 
-    if (!RunPrivilegedCommand("umount", {isoMount.string()}, error)) {
+    if (!RunPrivilegedCommand("umount", {isoMount.string()}, error))
         return false;
-    }
 
-    /*
-     * Теперь монтируем C: уже после WIM.
-     */
+    // Монтируем установленную Windows.
     ReportProgress(0.83f, "Проверка установленной Windows...");
 
-    if (!RunPrivilegedCommand("mount", {"-t", "ntfs3", partitions.windows, windowsMount.string()}, error)) {
+    if (!RunPrivilegedCommand("mount", {"-t", "ntfs3", partitions.windows, windowsMount.string()}, error))
         return false;
-    }
 
     const std::filesystem::path kernel = windowsMount / "Windows" / "System32" / "ntoskrnl.exe";
 
     if (!std::filesystem::exists(kernel)) {
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
-        error = "Windows image была применена, "
-                "но не найден:\n\n" +
-                kernel.string();
+        error = "Windows image была применена, но не найден:\n\n" + kernel.string();
 
         return false;
     }
 
     std::cout << "\nWindows image успешно применена.\n";
 
-    /*
-     * Находим ms-sys и bcd-sys.
-     */
+    // Пути к инструментам установщика.
     std::filesystem::path executableDirectory;
 
     if (!GetExecutableDirectory(executableDirectory, error)) {
@@ -2878,7 +2934,6 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
         error = "Не найден MS-SYS:\n\n" + msSys.string();
-
         return false;
     }
 
@@ -2886,62 +2941,43 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
         error = "Не найден BCD-SYS:\n\n" + bcdSys.string();
-
         return false;
     }
 
-    /*
-     * =====================================================
-     * Legacy boot
-     * =====================================================
-     *
-     * 1. Windows 7 MBR
-     * 2. NTFS boot sector
-     * 3. BCD / bootmgr
-     */
-
+    // Legacy BIOS boot.
     ReportProgress(0.87f, "Настройка Legacy BIOS-загрузчика...");
 
     std::cout << "\nЗапись Windows MBR...\n";
 
     if (!RunPrivilegedCommand(msSys.string(), {"--mbr7", disk}, error)) {
+
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
         return false;
     }
 
-    /*
-     * Записываем Windows NTFS boot sector
-     * на сам раздел C:.
-     */
     std::cout << "\nЗапись NTFS boot sector...\n";
 
     if (!RunPrivilegedCommand(msSys.string(), {"--ntfs", partitions.windows}, error)) {
+
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
         return false;
     }
 
-    /*
-     * BCD-SYS создаёт:
-     *
-     * C:\bootmgr
-     * C:\Boot\BCD
-     */
     ReportProgress(0.91f, "Создание Windows Boot Manager...");
 
     std::cout << "\nНастройка Windows Boot Manager...\n";
 
     if (!RunPrivilegedCommand("env", {"LC_ALL=C", bcdSys.string(), windowsMount.string(), "--firmware", "BIOS", "--clean", "--locale", "ru-RU", "--prodname", "Windows 10 Enterprise", "--verbose"},
                               error)) {
+
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
         return false;
     }
 
-    /*
-     * Финальная проверка Legacy-загрузчика.
-     */
+    // Проверка загрузчика.
     ReportProgress(0.96f, "Проверка Legacy-загрузчика...");
 
     const std::filesystem::path bootManager = windowsMount / "bootmgr";
@@ -2964,20 +3000,9 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
         return false;
     }
 
-    std::cout << "\nПроверка Legacy-загрузчика "
-              << "прошла успешно.\n";
+    std::cout << "\nПроверка Legacy-загрузчика прошла успешно.\n";
 
-    /*
-     * Устанавливаем файлы первого запуска Windows.
-     *
-     * assets/Scripts/unattend.xml
-     *     ->
-     * C:\Windows\Panther\unattend.xml
-     *
-     * assets/Scripts/SetupComplete.cmd
-     *     ->
-     * C:\Windows\Setup\Scripts\SetupComplete.cmd
-     */
+    // Файлы первого запуска.
     ReportProgress(0.97f, "Установка файлов первого запуска...");
 
     const std::filesystem::path scriptsDirectory = executableDirectory / "assets" / "Scripts";
@@ -2985,6 +3010,12 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
     const std::filesystem::path unattend = scriptsDirectory / "unattend.xml";
 
     const std::filesystem::path setupComplete = scriptsDirectory / "SetupComplete.cmd";
+
+    const std::filesystem::path pantherDirectory = windowsMount / "Windows" / "Panther";
+
+    const std::filesystem::path setupScriptsDirectory = windowsMount / "Windows" / "Setup" / "Scripts";
+
+    const std::filesystem::path sysprepDirectory = windowsMount / "Windows" / "System32" / "Sysprep";
 
     if (!std::filesystem::exists(unattend)) {
         error = "Не найден unattend.xml:\n\n" + unattend.string();
@@ -3002,18 +3033,47 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
         return false;
     }
 
-    const std::filesystem::path pantherDirectory = windowsMount / "Windows" / "Panther";
+    if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string()}, error)) {
 
-    const std::filesystem::path setupScriptsDirectory = windowsMount / "Windows" / "Setup" / "Scripts";
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
+        return false;
+    }
+
+    // unattend.xml -> Panther
+    if (!RunPrivilegedCommand("cp", {unattend.string(), (pantherDirectory / "unattend.xml").string()}, error)) {
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+
+        return false;
+    }
+
+    // unattend.xml -> Sysprep
+    if (!RunPrivilegedCommand("cp", {unattend.string(), (sysprepDirectory / "unattend.xml").string()}, error)) {
+
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+
+        return false;
+    }
+
+    /*
+     * SetupComplete.cmd пока НЕ копируем.
+     * Код оставлен для последующего включения.
+     */
+
+    //if (!RunPrivilegedCommand("cp", {setupComplete.string(), (setupScriptsDirectory / "SetupComplete.cmd").string()}, error)) {
+
+    //    RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+
+    //    return false;
+    //}
+
+    // PostInstall.
     const std::filesystem::path postInstallDirectory = windowsMount / "Programs" / "PostInstall";
 
-    const std::filesystem::path startupDirectory =
-        windowsMount / "ProgramData" / "Microsoft" / "Windows" /
-        "Start Menu" / "Programs" / "Startup";
+    const std::filesystem::path startupDirectory = windowsMount / "ProgramData" / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup";
 
-    const std::filesystem::path psetup =
-        executableDirectory / "assets" / "PSetup.exe";
+    const std::filesystem::path psetup = executableDirectory / "assets" / "PSetup.exe";
 
     if (!std::filesystem::exists(psetup)) {
         error = "Не найден PSetup.exe:\n\n" + psetup.string();
@@ -3023,9 +3083,8 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
         return false;
     }
 
-    const std::filesystem::path sysprepDirectory = windowsMount / "Windows" / "System32" / "Sysprep";
+    if (!RunPrivilegedCommand("mkdir", {"-p", postInstallDirectory.string(), startupDirectory.string()}, error)) {
 
-    if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string(), postInstallDirectory.string(), startupDirectory.string()}, error)) {
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
         return false;
@@ -3034,6 +3093,7 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
     const std::filesystem::path temporaryConfig = "/tmp/PhoenixInstaller-config.json";
 
     if (!CreatePostInstallConfig(context, temporaryConfig, error)) {
+
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
         return false;
@@ -3042,6 +3102,7 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
     const std::filesystem::path postInstallConfig = postInstallDirectory / "config.json";
 
     if (!RunPrivilegedCommand("cp", {temporaryConfig.string(), postInstallConfig.string()}, error)) {
+
         std::error_code removeError;
         std::filesystem::remove(temporaryConfig, removeError);
 
@@ -3061,23 +3122,19 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
         return false;
     }
 
-    const std::filesystem::path postInstallPsetup =
-        postInstallDirectory / "PSetup.exe";
+    const std::filesystem::path postInstallPsetup = postInstallDirectory / "PSetup.exe";
 
-    if (!RunPrivilegedCommand(
-            "cp", {psetup.string(), postInstallPsetup.string()}, error)) {
+    if (!RunPrivilegedCommand("cp", {psetup.string(), postInstallPsetup.string()}, error)) {
+
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+
         return false;
     }
 
     ReportProgress(0.99f, "Завершение установки...");
 
-    /*
-     * Теперь Windows-раздел можно размонтировать.
-     */
-    if (!RunPrivilegedCommand("umount", {windowsMount.string()}, error)) {
+    if (!RunPrivilegedCommand("umount", {windowsMount.string()}, error))
         return false;
-    }
 
     ReportProgress(1.0f, "Установка Windows завершена.");
 

@@ -1,258 +1,114 @@
 [
-    {
-        "id": "chrome",
-        "name": "Google Chrome",
-        "description": "Быстрый браузер",
-        "folder": "Chrome",
-        "installer": "ChromeSetup.exe",
-        "arguments": "/silent"
-    },
-    {
-        "id": "telegram",
-        "name": "Telegram",
-        "description": "Мессенджер",
-        "folder": "Telegram",
-        "installer": "Telegram.exe",
-        "arguments": "/VERYSILENT"
-    },
-    {
-        "id": "firefox",
-        "name": "Mozilla Firefox",
-        "description": "Веб-браузер",
-        "folder": "Firefox",
-        "installer": "FirefoxSetup.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "edge",
-        "name": "Microsoft Edge",
-        "description": "Браузер Microsoft",
-        "folder": "Edge",
-        "installer": "MicrosoftEdgeSetup.exe",
-        "arguments": "/silent"
-    },
-    {
-        "id": "opera",
-        "name": "Opera",
-        "description": "Веб-браузер",
-        "folder": "Opera",
-        "installer": "OperaSetup.exe",
-        "arguments": "/silent"
-    },
-    {
-        "id": "brave",
-        "name": "Brave",
-        "description": "Защищённый браузер",
-        "folder": "Brave",
-        "installer": "BraveSetup.exe",
-        "arguments": "/silent"
-    },
-    {
-        "id": "discord",
-        "name": "Discord",
-        "description": "Голосовой чат",
-        "folder": "Discord",
-        "installer": "DiscordSetup.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "steam",
-        "name": "Steam",
-        "description": "Игровая платформа",
-        "folder": "Steam",
-        "installer": "SteamSetup.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "epicgames",
-        "name": "Epic Games Launcher",
-        "description": "Игровой лаунчер",
-        "folder": "EpicGames",
-        "installer": "EpicInstaller.exe",
-        "arguments": "/silent"
-    },
-    {
-        "id": "gog",
-        "name": "GOG Galaxy",
-        "description": "Игровой клиент",
-        "folder": "GOGGalaxy",
-        "installer": "GalaxySetup.exe",
-        "arguments": "/VERYSILENT"
-    },
-    {
-        "id": "vlc",
-        "name": "VLC Media Player",
-        "description": "Медиаплеер",
-        "folder": "VLC",
-        "installer": "vlc.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "mpchc",
-        "name": "MPC-HC",
-        "description": "Видео-плеер",
-        "folder": "MPCHC",
-        "installer": "MPC-HC.exe",
-        "arguments": "/VERYSILENT"
-    },
-    {
-        "id": "potplayer",
-        "name": "PotPlayer",
-        "description": "Видео-плеер",
-        "folder": "PotPlayer",
-        "installer": "PotPlayerSetup.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "sevenzip",
-        "name": "7-Zip",
-        "description": "Архиватор",
-        "folder": "7-Zip",
-        "installer": "7z.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "winrar",
-        "name": "WinRAR",
-        "description": "Архиватор",
-        "folder": "WinRAR",
-        "installer": "WinRAR.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "notepadpp",
-        "name": "Notepad++",
-        "description": "Текстовый редактор",
-        "folder": "Notepad++",
-        "installer": "npp.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "vscode",
-        "name": "Visual Studio Code",
-        "description": "Редактор кода",
-        "folder": "VSCode",
-        "installer": "VSCodeSetup.exe",
-        "arguments": "/VERYSILENT"
-    },
-    {
-        "id": "visualstudio",
-        "name": "Visual Studio 2022",
-        "description": "IDE",
-        "folder": "VisualStudio",
-        "installer": "vs_setup.exe",
-        "arguments": "--quiet --wait"
-    },
-    {
-        "id": "git",
-        "name": "Git",
-        "description": "Система контроля версий",
-        "folder": "Git",
-        "installer": "Git.exe",
-        "arguments": "/VERYSILENT"
-    },
-    {
-        "id": "githubdesktop",
-        "name": "GitHub Desktop",
-        "description": "Git клиент",
-        "folder": "GitHubDesktop",
-        "installer": "GitHubDesktopSetup.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "cmake",
-        "name": "CMake",
-        "description": "Система сборки",
-        "folder": "CMake",
-        "installer": "cmake.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "python",
-        "name": "Python",
-        "description": "Интерпретатор Python",
-        "folder": "Python",
-        "installer": "python.exe",
-        "arguments": "/quiet InstallAllUsers=1 PrependPath=1"
-    },
-    {
-        "id": "nodejs",
-        "name": "Node.js",
-        "description": "JavaScript Runtime",
-        "folder": "NodeJS",
-        "installer": "node.msi",
-        "arguments": "/qn"
-    },
-    {
-        "id": "dotnet",
-        "name": ".NET Runtime",
-        "description": ".NET Runtime",
-        "folder": "DotNet",
-        "installer": "dotnet-runtime.exe",
-        "arguments": "/quiet"
-    },
-    {
-        "id": "jdk",
-        "name": "OpenJDK",
-        "description": "Java Development Kit",
-        "folder": "OpenJDK",
-        "installer": "jdk.exe",
-        "arguments": "/s"
-    },
-    {
-        "id": "obs",
-        "name": "OBS Studio",
-        "description": "Запись экрана",
-        "folder": "OBS",
-        "installer": "OBS-Studio.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "audacity",
-        "name": "Audacity",
-        "description": "Редактор аудио",
-        "folder": "Audacity",
-        "installer": "Audacity.exe",
-        "arguments": "/VERYSILENT"
-    },
-    {
-        "id": "spotify",
-        "name": "Spotify",
-        "description": "Музыкальный сервис",
-        "folder": "Spotify",
-        "installer": "SpotifySetup.exe",
-        "arguments": "/silent"
-    },
-    {
-        "id": "teamviewer",
-        "name": "TeamViewer",
-        "description": "Удалённый доступ",
-        "folder": "TeamViewer",
-        "installer": "TeamViewer.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "anydesk",
-        "name": "AnyDesk",
-        "description": "Удалённый доступ",
-        "folder": "AnyDesk",
-        "installer": "AnyDesk.exe",
-        "arguments": "--silent"
-    },
-    {
-        "id": "qbittorrent",
-        "name": "qBittorrent",
-        "description": "BitTorrent клиент",
-        "folder": "qBittorrent",
-        "installer": "qbittorrent.exe",
-        "arguments": "/S"
-    },
-    {
-        "id": "rufus",
-        "name": "Rufus",
-        "description": "Создание загрузочных USB",
-        "folder": "Rufus",
-        "installer": "Rufus.exe",
-        "arguments": ""
-    }
+  {
+    "id": "7z",
+    "name": "7z",
+    "description": "архиватор",
+    "folder": "7z",
+    "installer": "SILENT.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "adobereader",
+    "name": "adobe reader",
+    "description": "adobe reader",
+    "folder": "adobereader",
+    "installer": "SILENT.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "CrystalReport",
+    "name": "Crystal Report",
+    "description": "CrystalReport",
+    "folder": "CrystalReport",
+    "installer": "CRRuntime.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "DKS",
+    "name": "DKS",
+    "description": "DKS",
+    "folder": "DKS",
+    "installer": "dks_x64_accessDBE_2010.exe",
+    "arguments": "/S"
+  },
+  {
+    "id": "FoxitReader",
+    "name": "Foxit Reader",
+    "description": "Foxit Reader",
+    "folder": "FoxitReader",
+    "installer": "SILENT.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "k-lite",
+    "name": "k-lite",
+    "description": "k-lite",
+    "folder": "k-lite",
+    "installer": "SILENT.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "Lotus Notes",
+    "name": "Lotus Notes",
+    "description": "Lotus Notes",
+    "folder": "Lotus_Notes_8_5_3",
+    "installer": "SILENT.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "MPC_BE",
+    "name": "MPC BE",
+    "description": "MPC BE",
+    "folder": "MPC_BE",
+    "installer": "SILENT.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "OfficeStd_2013_x64",
+    "name": "Microsoft office",
+    "description": "Microsoft office",
+    "folder": "OfficeStd_2013_x64",
+    "installer": "SILENT.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "Silverlight",
+    "name": "Silver light",
+    "description": "Silver light",
+    "folder": "Silverlight",
+    "installer": "SILENT.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "TotalCmd",
+    "name": "Total Commander",
+    "description": "Total Commander",
+    "folder": "TotalCmd",
+    "installer": "TOTALCMD.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "Microsoft Visio",
+    "name": "Microsoft Visio",
+    "description": "Microsoft Visio",
+    "folder": "VISIO_x64",
+    "installer": "VISIO.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "WinSent_Messenger",
+    "name": "Win Sent messenger",
+    "description": "Win Sent messenger",
+    "folder": "WinSent_Messenger",
+    "installer": "Setup.exe_install_silent.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "XPSViewer",
+    "name": "XPS Viewer",
+    "description": "XPS Viewer",
+    "folder": "XPSViewer",
+    "installer": "SILENT.cmd",
+    "arguments": ""
+  }
 ]
