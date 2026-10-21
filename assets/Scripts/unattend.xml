@@ -10,10 +10,13 @@
                publicKeyToken="31bf3856ad364e35"
                language="neutral"
                versionScope="nonSxS">
+
       <TimeZone>Russian Standard Time</TimeZone>
       <RegisteredOwner>systemsupport</RegisteredOwner>
+
     </component>
   </settings>
+
 
   <settings pass="oobeSystem">
 
@@ -22,11 +25,14 @@
                publicKeyToken="31bf3856ad364e35"
                language="neutral"
                versionScope="nonSxS">
+
       <InputLocale>ru-RU</InputLocale>
       <SystemLocale>ru-RU</SystemLocale>
       <UILanguage>ru-RU</UILanguage>
       <UserLocale>ru-RU</UserLocale>
+
     </component>
+
 
     <component name="Microsoft-Windows-Shell-Setup"
                processorArchitecture="amd64"
@@ -38,11 +44,13 @@
         <Enabled>true</Enabled>
         <Username>systemsupport</Username>
         <LogonCount>1</LogonCount>
+
         <Password>
           <Value>P@ssw0rd</Value>
           <PlainText>true</PlainText>
         </Password>
       </AutoLogon>
+
 
       <OOBE>
         <HideEULAPage>true</HideEULAPage>
@@ -50,26 +58,52 @@
         <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
         <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
         <HideLocalAccountScreen>true</HideLocalAccountScreen>
+
         <NetworkLocation>Work</NetworkLocation>
         <ProtectYourPC>3</ProtectYourPC>
       </OOBE>
 
+
       <UserAccounts>
+
         <LocalAccounts>
+
           <LocalAccount wcm:action="add">
+
             <Name>systemsupport</Name>
             <DisplayName>systemsupport</DisplayName>
             <Group>Administrators</Group>
+
             <Description>Installer local administrator</Description>
+
             <Password>
               <Value>P@ssw0rd</Value>
               <PlainText>true</PlainText>
             </Password>
+
           </LocalAccount>
+
         </LocalAccounts>
+
       </UserAccounts>
 
+
+      <!-- ================================================== -->
+      <!-- АВТОЗАПУСК PSETUP -->
+      <!-- ================================================== -->
+
+      <FirstLogonCommands>
+
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Description>Запуск PSetup 2.0</Description>
+          <CommandLine>cmd.exe /c start "" "C:\Programs\PostInstall\PSetup.exe"</CommandLine>
+        </SynchronousCommand>
+
+      </FirstLogonCommands>
+
     </component>
+
   </settings>
 
 </unattend>

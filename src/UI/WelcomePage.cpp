@@ -13,16 +13,16 @@
 void WelcomePage::Draw() {
     Layout::Begin();
     Layout::BeginContent();
-    Layout::BeginContainer(900.0f);
+    Layout::BeginContainer(600.0f);
 
     // Верхний отступ
-    Layout::Space(40);
+    Layout::Space(12);
 
     // Главный заголовок
     Texture *logo = TextureManager::Get("assets/images/logo.png");
 
     if (logo && logo->IsValid() && logo->Height() > 0) {
-        float logoHeight = Layout::Scale(128.0f);
+        float logoHeight = Layout::Scale(72.0f);
         float logoWidth = logoHeight * (static_cast<float>(logo->Width()) / static_cast<float>(logo->Height()));
 
         ImGui::Image(static_cast<ImTextureID>(logo->Get()), ImVec2(logoWidth, logoHeight));
@@ -40,7 +40,7 @@ void WelcomePage::Draw() {
 
     ImGui::Separator();
 
-    Layout::Space(42);
+    Layout::Space(12);
 
     // Заголовок страницы
     ImGui::PushFont(Fonts::Heading());
@@ -60,15 +60,15 @@ void WelcomePage::Draw() {
     UI::Bullet("Установка программ");
     UI::Bullet("Настройка системы после установки");
 
-    Layout::Space(60);
+    Layout::Space(18);
 
-    if (ImGui::Button(ICON_FA_WINDOWS "  Установить Windows", Layout::Scale(350.0f, 72.0f))) {
+    if (ImGui::Button(ICON_FA_WINDOWS "  Установить Windows", Layout::Scale(250.0f, 42.0f))) {
         m_NextRequested = true;
     }
 
     ImGui::SameLine(0.0f, Layout::Scale(18.0f));
 
-    if (ImGui::Button(ICON_FA_POWER_OFF "  Выход", Layout::Scale(180.0f, 72.0f))) {
+    if (ImGui::Button(ICON_FA_POWER_OFF "  Выход", Layout::Scale(120.0f, 42.0f))) {
         std::exit(0);
     }
 

@@ -15,19 +15,19 @@ ComputerSettingsPage::ComputerSettingsPage(InstallerContext &context)
 void ComputerSettingsPage::Draw() {
     Layout::Begin();
     Layout::BeginContent();
-    Layout::BeginContainer(900.0f);
+    Layout::BeginContainer(600.0f);
 
     ImGui::PushFont(Fonts::Title());
     ImGui::TextUnformatted("Настройка компьютера");
     ImGui::PopFont();
 
-    Layout::Space(10);
+    Layout::Space(5);
 
     ImGui::TextWrapped(
         "Укажите параметры компьютера, которые будут применены после установки Windows."
     );
 
-    Layout::Space(25);
+    Layout::Space(8);
 
     // ------------------------------------------------------------
     // Имя компьютера
@@ -38,7 +38,7 @@ void ComputerSettingsPage::Draw() {
         &m_Context.ChangeComputerName
     );
 
-    Layout::Space(10);
+    Layout::Space(5);
 
     ImGui::TextUnformatted("Имя компьютера");
 
@@ -75,18 +75,18 @@ void ComputerSettingsPage::Draw() {
         );
     }
 
-    Layout::Space(30);
+    Layout::Space(8);
 
     ImGui::Separator();
 
-    Layout::Space(18);
+    Layout::Space(6);
 
     // ------------------------------------------------------------
     // Кнопки
     // ------------------------------------------------------------
 
-    constexpr float ButtonWidth = 180.0f;
-    constexpr float ButtonHeight = 44.0f;
+    constexpr float ButtonWidth = 110.0f;
+    constexpr float ButtonHeight = 34.0f;
 
     if (ImGui::Button(
             "Назад",

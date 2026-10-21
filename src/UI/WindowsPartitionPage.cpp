@@ -52,7 +52,7 @@ void WindowsPartitionPage::Draw() {
     ImGui::TextUnformatted("Размер раздела Windows");
     ImGui::PopFont();
 
-    Layout::Space(8);
+    Layout::Space(3);
 
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width * 0.55f);
 
@@ -62,7 +62,7 @@ void WindowsPartitionPage::Draw() {
 
     ImGui::PopTextWrapPos();
 
-    Layout::Space(22);
+    Layout::Space(3);
 
     //------------------------------------------------------------
 
@@ -70,13 +70,13 @@ void WindowsPartitionPage::Draw() {
     ImGui::TextUnformatted("Размер раздела Windows");
     ImGui::PopFont();
 
-    Layout::Space(10);
+    Layout::Space(4);
 
     if (SegmentedSlider::Draw("##PartitionSlider", &m_WindowsSizeGB, MinWindowsSizeGB, maxWindowsSizeGB)) {
         m_Context.WindowsPartitionSize = static_cast<uint64_t>(m_WindowsSizeGB) * GB;
     }
 
-    Layout::Space(10);
+    Layout::Space(4);
 
     ImGui::Text("Минимум: %d ГБ", MinWindowsSizeGB);
 
@@ -89,7 +89,7 @@ void WindowsPartitionPage::Draw() {
 
     ImGui::TextUnformatted(maxBuffer);
 
-    Layout::Space(18);
+    Layout::Space(6);
 
     constexpr float StepperWidth = 240.0f;
 
@@ -103,7 +103,7 @@ void WindowsPartitionPage::Draw() {
         m_Context.WindowsPartitionSize = static_cast<uint64_t>(m_WindowsSizeGB) * GB;
     }
 
-    Layout::Space(16);
+    Layout::Space(6);
 
     ImGui::PushTextWrapPos();
 
@@ -112,7 +112,7 @@ void WindowsPartitionPage::Draw() {
 
     ImGui::PopTextWrapPos();
 
-    Layout::Space(24);
+    Layout::Space(3);
 
     //------------------------------------------------------------
 
@@ -120,11 +120,11 @@ void WindowsPartitionPage::Draw() {
     ImGui::TextUnformatted("После установки будет создано");
     ImGui::PopFont();
 
-    Layout::Space(10);
+    Layout::Space(4);
 
     ImGui::Separator();
 
-    Layout::Space(10);
+    Layout::Space(4);
 
     ImGui::TextUnformatted(ICON_FA_WINDOWS " Windows (C:)");
 
@@ -134,11 +134,11 @@ void WindowsPartitionPage::Draw() {
 
     ImGui::TextUnformatted(windowsPartition);
 
-    Layout::Space(8);
+    Layout::Space(3);
 
     ImGui::Separator();
 
-    Layout::Space(8);
+    Layout::Space(3);
 
     ImGui::TextUnformatted(ICON_FA_HARD_DRIVE " Data (D:)");
 
@@ -148,18 +148,18 @@ void WindowsPartitionPage::Draw() {
 
     ImGui::TextUnformatted(dataPartition);
 
-    Layout::Space(18);
+    Layout::Space(6);
 
     ImGui::TextDisabled(ICON_FA_CIRCLE_INFO " EFI, MSR и Recovery будут созданы автоматически.");
 
-    Layout::Space(24);
+    Layout::Space(3);
 
     ImGui::Separator();
 
-    Layout::Space(18);
+    Layout::Space(6);
 
-    constexpr float ButtonWidth = 180.0f;
-    constexpr float ButtonHeight = 44.0f;
+    constexpr float ButtonWidth = 110.0f;
+    constexpr float ButtonHeight = 34.0f;
 
     if (ImGui::Button("Назад", ImVec2(ButtonWidth, ButtonHeight))) {
         m_BackRequested = true;

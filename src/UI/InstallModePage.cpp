@@ -12,68 +12,76 @@ InstallModePage::InstallModePage(InstallerContext &context) : m_Context(context)
 void InstallModePage::Draw() {
     Layout::Begin();
     Layout::BeginContent();
-    Layout::BeginContainer(900.0f);
+    Layout::BeginContainer(600.0f);
 
     ImGui::PushFont(Fonts::Title());
     ImGui::TextUnformatted("Способ установки");
     ImGui::PopFont();
 
-    Layout::Space(20);
+    Layout::Space(8);
 
     ImGui::TextUnformatted("Выберите способ установки Windows");
 
-    Layout::Space(20);
+    Layout::Space(8);
 
     //
-    // Переустановка Windows
+    // Переустановка Windows диск Д не трогаем
     //
     Card::Begin("mode_windows", m_Context.Mode == InstallMode::ReinstallWindows);
 
     ImGui::TextUnformatted("Переустановить Windows");
     ImGui::Spacing();
-    ImGui::TextWrapped("Будет отформатирован только раздел Windows. "
-                       "Разделы данных останутся без изменений.");
+    ImGui::TextWrapped(
+        "Будет отформатирован только раздел C: и установлена Windows заново. "
+        "Раздел D: и AMDZ останутся без изменений."
+    );
 
     if (Card::End())
         m_Context.Mode = InstallMode::ReinstallWindows;
 
-    Layout::Space(15);
+    Layout::Space(5);
 
     //
-    // Переустановка + Data
+    // стандартная установка
     //
     Card::Begin("mode_data", m_Context.Mode == InstallMode::ReinstallWindowsAndFormatData);
 
-    ImGui::TextUnformatted("Переустановить Windows и раздел данных");
+    ImGui::TextUnformatted("Полная очистка и переустановка Windows");
     ImGui::Spacing();
-    ImGui::TextWrapped("Будут отформатированы раздел Windows и раздел данных.");
+    ImGui::TextWrapped(
+        "Раздел C: будет создан размером 120 ГБ, остальное доступное "
+        "пространство будет отведено под D:. Данные на C: и D: будут удалены. "
+        "Раздел AMDZ останется без изменений."
+    );
 
     if (Card::End())
         m_Context.Mode = InstallMode::ReinstallWindowsAndFormatData;
 
-    Layout::Space(15);
+    Layout::Space(5);
 
     //
-    // Полная очистка
+    // Полная очистка + ручная разметка
     //
     Card::Begin("mode_clean", m_Context.Mode == InstallMode::CleanDisk);
 
-    ImGui::TextUnformatted("Полностью очистить диск");
+    ImGui::TextUnformatted("Ручная разметка (для опытных инженеров)");
     ImGui::Spacing();
-    ImGui::TextWrapped("Все разделы будут удалены. "
-                       "Будет создана новая таблица разделов GPT.");
+    ImGui::TextWrapped(
+        "Выберите размер C:. Всё оставшееся доступное пространство "
+        "будет отведено под D:. Раздел AMDZ останется без изменений."
+    );
 
     if (Card::End())
         m_Context.Mode = InstallMode::CleanDisk;
 
-    Layout::Space(30);
+    Layout::Space(8);
 
     ImGui::Separator();
 
-    Layout::Space(15);
+    Layout::Space(5);
 
-    constexpr float buttonWidth = 180.0f;
-    constexpr float buttonHeight = 45.0f;
+    constexpr float buttonWidth = 110.0f;
+    constexpr float buttonHeight = 34.0f;
 
     if (ImGui::Button("Назад", ImVec2(buttonWidth, buttonHeight)))
         m_BackRequested = true;

@@ -14,17 +14,17 @@ ProgramPage::ProgramPage(InstallerContext &context) : m_Context(context) {
 void ProgramPage::Draw() {
     Layout::Begin();
     Layout::BeginContent();
-    Layout::BeginContainer(900.0f);
+    Layout::BeginContainer(600.0f);
 
     ImGui::PushFont(Fonts::Title());
     ImGui::TextUnformatted("Установка программ");
     ImGui::PopFont();
 
-    Layout::Space(20);
+    Layout::Space(5);
 
     ImGui::TextUnformatted("Выберите программы, которые необходимо установить");
 
-    Layout::Space(20);
+    Layout::Space(5);
 
     const auto &packages = m_Context.Packages.GetPackages();
     auto &selectedPackages = m_Context.SelectedPackages;
@@ -51,13 +51,13 @@ void ProgramPage::Draw() {
         }
     }
 
-    Layout::Space(30);
+    Layout::Space(8);
 
     ImGui::Separator();
-    Layout::Space(15);
+    Layout::Space(6);
 
-    constexpr float buttonWidth = 180.0f;
-    constexpr float buttonHeight = 45.0f;
+    constexpr float buttonWidth = 90.0f;
+    constexpr float buttonHeight = 34.0f;
 
     // Назад
     if (ImGui::Button("Назад", ImVec2(buttonWidth, buttonHeight))) {

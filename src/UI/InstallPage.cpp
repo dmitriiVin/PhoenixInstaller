@@ -22,17 +22,17 @@ void InstallPage::Draw() {
 
     Layout::Begin();
     Layout::BeginContent();
-    Layout::BeginContainer(900.0f);
+    Layout::BeginContainer(600.0f);
 
     ImGui::PushFont(Fonts::Title());
     ImGui::TextUnformatted("Установка Windows");
     ImGui::PopFont();
 
-    Layout::Space(20);
+    Layout::Space(8);
 
     ImGui::TextUnformatted("Выберите диск для установки Windows");
 
-    Layout::Space(20);
+    Layout::Space(8);
 
     if (m_Disks.empty()) {
         ImGui::TextColored(ImVec4(1.f, 0.4f, 0.4f, 1.f), "Физические диски не найдены.");
@@ -49,14 +49,14 @@ void InstallPage::Draw() {
 
     const bool diskSelected = m_Context.SelectedDisk.has_value();
 
-    Layout::Space(30);
+    Layout::Space(8);
 
     ImGui::Separator();
 
-    Layout::Space(15);
+    Layout::Space(6);
 
-    constexpr float buttonWidth = 180.0f;
-    constexpr float buttonHeight = 45.0f;
+    constexpr float buttonWidth = 110.0f;
+    constexpr float buttonHeight = 34.0f;
 
     if (ImGui::Button("Назад", ImVec2(buttonWidth, buttonHeight))) {
         m_BackRequested = true;
@@ -86,7 +86,7 @@ void InstallPage::Draw() {
 void InstallPage::DrawInstallationProgress() {
     Layout::Begin();
     Layout::BeginContent();
-    Layout::BeginContainer(900.0f);
+    Layout::BeginContainer(600.0f);
 
     ImGui::PushFont(Fonts::Title());
 
@@ -102,13 +102,13 @@ void InstallPage::DrawInstallationProgress() {
 
     ImGui::PopFont();
 
-    Layout::Space(35);
+    Layout::Space(10);
 
     const float progress = std::clamp(m_Progress.load(), 0.0f, 1.0f);
 
-    ImGui::ProgressBar(progress, ImVec2(-1.0f, 32.0f));
+    ImGui::ProgressBar(progress, ImVec2(-1.0f, 20.0f));
 
-    Layout::Space(15);
+    Layout::Space(6);
 
     std::string status;
     std::string error;
@@ -122,16 +122,16 @@ void InstallPage::DrawInstallationProgress() {
 
     ImGui::TextWrapped("%s", status.c_str());
 
-    Layout::Space(15);
+    Layout::Space(6);
 
     ImGui::Text("%.0f%%", progress * 100.0f);
 
     if (IsFailed()) {
-        Layout::Space(25);
+        Layout::Space(8);
 
         ImGui::Separator();
 
-        Layout::Space(15);
+        Layout::Space(6);
 
         ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "Ошибка:");
 
@@ -141,11 +141,11 @@ void InstallPage::DrawInstallationProgress() {
     }
 
     if (IsFinished()) {
-        Layout::Space(25);
+        Layout::Space(8);
 
         ImGui::Separator();
 
-        Layout::Space(20);
+        Layout::Space(8);
 
         ImGui::TextUnformatted("Windows установлена и загрузчик "
                                "настроен.");

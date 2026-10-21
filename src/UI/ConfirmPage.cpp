@@ -1,6 +1,7 @@
 #include "ConfirmPage.h"
 
 #include <string>
+#include <algorithm>
 
 #include "Core/DiskInfo.h"
 #include "UI/Fonts/Fonts.h"
@@ -15,7 +16,7 @@ ConfirmPage::ConfirmPage(InstallerContext &context) : m_Context(context) {
 void ConfirmPage::Draw() {
     Layout::Begin();
     Layout::BeginContent();
-    Layout::BeginContainer(1100.0f);
+    Layout::BeginContainer(600.0f);
 
     m_BackRequested = false;
     m_NextRequested = false;
@@ -24,13 +25,13 @@ void ConfirmPage::Draw() {
     ImGui::TextUnformatted("Подтверждение установки");
     ImGui::PopFont();
 
-    Layout::Space(15);
+    Layout::Space(7);
 
     ImGui::TextUnformatted("Проверьте параметры перед началом установки Windows.");
 
-    Layout::Space(25);
+    Layout::Space(5);
 
-    constexpr float CardHeight = 600.0f;
+    const float CardHeight = std::max(150.0f, ImGui::GetContentRegionAvail().y * 0.52f);
 
     //----------------------------------------------------
     // Левая колонка
@@ -47,7 +48,7 @@ void ConfirmPage::Draw() {
     ImGui::SameLine(180);
     ImGui::TextUnformatted("Windows 10 Enterprise");
 
-    Layout::Space(15);
+    Layout::Space(7);
 
     ImGui::TextDisabled("Диск");
     ImGui::Separator();
@@ -87,7 +88,7 @@ void ConfirmPage::Draw() {
         ImGui::Text("%.1f ГБ", disk.Size / 1024.0 / 1024.0 / 1024.0);
     }
 
-    Layout::Space(15);
+    Layout::Space(7);
 
     ImGui::TextDisabled("Будет создано");
     ImGui::Separator();
@@ -153,7 +154,7 @@ void ConfirmPage::Draw() {
     }
     }
 
-    Layout::Space(15);
+    Layout::Space(7);
 
     ImGui::TextDisabled("Пользователь");
     ImGui::Separator();
@@ -192,7 +193,7 @@ void ConfirmPage::Draw() {
 
     ImGui::EndChild();
 
-    Layout::Space(15);
+    Layout::Space(7);
 
     ImGui::TextColored(ImVec4(1.f, .82f, .2f, 1.f), "Внимание!");
 
@@ -217,14 +218,14 @@ void ConfirmPage::Draw() {
         break;
     }
 
-    Layout::Space(15);
+    Layout::Space(7);
 
     ImGui::Separator();
 
-    Layout::Space(10);
+    Layout::Space(5);
 
-    constexpr float ButtonWidth = 250.0f;
-    constexpr float ButtonHeight = 45.0f;
+    constexpr float ButtonWidth = 150.0f;
+    constexpr float ButtonHeight = 34.0f;
 
     if (ImGui::Button("Назад", ImVec2(ButtonWidth, ButtonHeight))) {
         m_BackRequested = true;

@@ -8,10 +8,10 @@
     "arguments": ""
   },
   {
-    "id": "adobereader",
-    "name": "adobe reader",
-    "description": "adobe reader",
-    "folder": "adobereader",
+    "id": "Adobe_Acrobat",
+    "name": "Adobe Acrobat Reader",
+    "description": "PDF Adobe Acrobat Reader",
+    "folder": "Adobe_Acrobat",
     "installer": "SILENT.cmd",
     "arguments": ""
   },
@@ -93,6 +93,14 @@
     "description": "Microsoft Visio",
     "folder": "VISIO_x64",
     "installer": "VISIO.cmd",
+    "arguments": ""
+  },
+  {
+    "id": "Web_view2",
+    "name": "Web view 2",
+    "description": "Web view 2",
+    "folder": "Web_view2",
+    "installer": "SILENT.cmd",
     "arguments": ""
   },
   {

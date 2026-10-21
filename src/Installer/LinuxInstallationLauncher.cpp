@@ -8,6 +8,10 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <limits>
+#include <map>
+#include <regex>
+#include <set>
 #include <sstream>
 #include <string>
 
@@ -791,10 +795,12 @@ bool LinuxInstallationLauncher::Install(const InstallerContext &context, std::st
         ReportProgress(0.05f, "Подготовка переустановки Windows и форматирования Data...");
 
         if (uefi) {
-            return InstallExistingWindowsAndData(context, error, progress);
+            return InstallCleanDisk(context, error, progress);
         }
 
-        return InstallLegacy(context, error, progress);
+        InstallerContext legacyContext = context;
+        legacyContext.WindowsPartitionSize = 120ull * 1024ull * 1024ull * 1024ull;
+        return InstallLegacyCleanDisk(legacyContext, error, progress);
     }
 
     if (context.Mode == InstallMode::CleanDisk) {
@@ -817,7 +823,7 @@ bool LinuxInstallationLauncher::InstallUEFI(const InstallerContext &context, std
         return InstallExistingWindows(context, error, progress);
 
     case InstallMode::ReinstallWindowsAndFormatData:
-        return InstallExistingWindowsAndData(context, error, progress);
+        return InstallCleanDisk(context, error, progress);
 
     case InstallMode::CleanDisk:
         return InstallCleanDisk(context, error, progress);
@@ -1695,24 +1701,18 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
     };
 
     constexpr std::uint64_t SECTOR_SIZE = 512;
+    constexpr std::uint64_t GiB = 1024ull * 1024ull * 1024ull;
     constexpr std::uint64_t MiB = 1024ull * 1024ull;
-
-    constexpr std::uint64_t EFI_SIZE = 512ull * MiB;
-    constexpr std::uint64_t MSR_SIZE = 16ull * MiB;
-    constexpr std::uint64_t RECOVERY_SIZE = 800ull * MiB;
-
-    constexpr std::uint64_t EFI_SECTORS = EFI_SIZE / SECTOR_SIZE;
-    constexpr std::uint64_t MSR_SECTORS = MSR_SIZE / SECTOR_SIZE;
-    constexpr std::uint64_t RECOVERY_SECTORS = RECOVERY_SIZE / SECTOR_SIZE;
-
+    constexpr std::uint64_t EFI_SECTORS = (512ull * MiB) / SECTOR_SIZE;
+    constexpr std::uint64_t MSR_SECTORS = (16ull * MiB) / SECTOR_SIZE;
     constexpr std::uint64_t FIRST_LBA = 2048;
+    constexpr std::uint64_t ALIGNMENT_SECTORS = 2048;
     constexpr std::uint64_t GPT_BACKUP_SECTORS = 33;
-
-    constexpr const char *EFI_PARTITION_TYPE = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b";
-    constexpr const char *MSR_PARTITION_TYPE = "e3c9e316-0b5c-4db8-817d-f92df00215ae";
-    constexpr const char *WINDOWS_PARTITION_TYPE = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7";
-    constexpr const char *RECOVERY_PARTITION_TYPE = "de94bba4-06d1-4d40-a16a-bfd50179d6ac";
-    constexpr const char *AMDZ_PARTITION_TYPE = "0fc63daf-8483-4772-8e79-3d69d8477de4";
+    constexpr std::uint64_t AMDZ_DETECTION_RANGE_SECTORS = (3ull * GiB) / SECTOR_SIZE;
+    constexpr std::uint64_t MIN_PRESERVED_SYSTEM_SECTORS = (64ull * MiB) / SECTOR_SIZE;
+    constexpr std::uint64_t MAX_PRESERVED_SYSTEM_SECTORS = (192ull * MiB) / SECTOR_SIZE;
+    constexpr std::uint64_t ADJACENCY_TOLERANCE_SECTORS = (1ull * MiB) / SECTOR_SIZE;
+    constexpr std::uint64_t MIN_DATA_SECTORS = (1024ull * MiB) / SECTOR_SIZE;
 
     if (!context.SelectedDisk) {
         error = "Диск для установки не выбран.";
@@ -1720,345 +1720,345 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
     }
 
     const std::string disk = NormalizeDevice(context.SelectedDisk->Device);
-
-    if (disk == "/dev/sda") {
-        error = "Операция остановлена: /dev/sda запрещён для установки Windows.";
-        return false;
-    }
-
     const std::uint64_t diskSize = context.SelectedDisk->Size;
     const std::uint64_t diskSectors = diskSize / SECTOR_SIZE;
-    const std::uint64_t windowsSize = context.WindowsPartitionSize;
+
+    // Режим 2 всегда использует C: размером 120 GiB.
+    // Режим 3 использует размер, выбранный пользователем.
+    const std::uint64_t windowsSize =
+        context.Mode == InstallMode::ReinstallWindowsAndFormatData
+            ? 120ull * GiB
+            : context.WindowsPartitionSize;
     const std::uint64_t windowsSectors = windowsSize / SECTOR_SIZE;
+
+    if (context.Mode != InstallMode::ReinstallWindowsAndFormatData &&
+        context.Mode != InstallMode::CleanDisk) {
+        error = "InstallCleanDisk вызван для неподдерживаемого режима.";
+        return false;
+    }
 
     if (windowsSectors == 0) {
         error = "Размер Windows-раздела не может быть равен нулю.";
         return false;
     }
 
-    /*
-     * Проверяем, существует ли на диске AMDZ.
-     *
-     * Если AMDZ найден:
-     *   - его содержимое НЕ форматируем;
-     *   - wipefs для всего диска НЕ выполняем;
-     *   - сохраняем его точный start/size;
-     *   - после него создаём EFI/MSR/Windows/Data/Recovery.
-     *
-     * Если AMDZ нет — используется обычная чистая установка.
-     */
-    bool hasAmdz = false;
-    std::string amdzPartition;
-    std::uint64_t amdzStart = 0;
-    std::uint64_t amdzSectors = 0;
+    struct ExistingPart {
+        std::string device;
+        std::string label;
+        std::string partLabel;
+        std::uint64_t number = 0;
+        std::uint64_t start = 0;
+        std::uint64_t sectors = 0;
+    };
 
+    // lsblk -P сохраняет пустые поля и не сдвигает столбцы.
     std::string lsblkOutput;
-    std::string lsblkError;
+    std::string commandError;
+    if (!RunCommandCapture("lsblk",
+                           {"-b", "-P", "-p", "-o", "NAME,TYPE,LABEL,PARTLABEL,PARTN,START,SIZE", disk},
+                           lsblkOutput, commandError)) {
+        error = "Не удалось прочитать разметку диска. Установка остановлена.";
+        return false;
+    }
 
-    if (RunCommandCapture("lsblk", {"-b", "-rpn", "-o", "NAME,TYPE,FSTYPE,LABEL,START,SIZE", disk}, lsblkOutput, lsblkError)) {
-        std::istringstream stream(lsblkOutput);
-        std::string line;
+    const std::regex fieldRegex(R"re(([A-Z]+)="([^"]*)")re");
+    std::vector<ExistingPart> existingParts;
+    bool hasAmdz = false;
+    ExistingPart amdz;
 
-        while (std::getline(stream, line)) {
-            if (line.empty())
-                continue;
+    std::istringstream rows(lsblkOutput);
+    std::string row;
+    while (std::getline(rows, row)) {
+        std::map<std::string, std::string> fields;
+        for (std::sregex_iterator it(row.begin(), row.end(), fieldRegex), end; it != end; ++it)
+            fields[(*it)[1].str()] = (*it)[2].str();
 
-            std::istringstream lineStream(line);
+        if (fields["TYPE"] != "part")
+            continue;
 
-            std::string device;
-            std::string type;
-            std::string filesystem;
-            std::string label;
-            std::uint64_t startSector = 0;
-            std::uint64_t sizeBytes = 0;
+        ExistingPart part;
+        part.device = fields["NAME"];
+        part.label = fields["LABEL"];
+        part.partLabel = fields["PARTLABEL"];
 
-            lineStream >> device >> type >> filesystem >> label >> startSector >> sizeBytes;
+        try {
+            part.number = std::stoull(fields["PARTN"]);
+            part.start = std::stoull(fields["START"]);
+            part.sectors = std::stoull(fields["SIZE"]) / SECTOR_SIZE;
+        } catch (...) {
+            error = "Не удалось определить геометрию одного из разделов диска.";
+            return false;
+        }
 
-            if (type != "part")
-                continue;
+        if (part.sectors == 0 || part.start > diskSectors || part.sectors > diskSectors - part.start) {
+            error = "Обнаружен раздел с некорректными границами. Установка остановлена.";
+            return false;
+        }
 
-            if (ToLower(label) == "amdz" && IsFat32(filesystem)) {
-                hasAmdz = true;
-                amdzPartition = device;
-                amdzStart = startSector;
-                amdzSectors = sizeBytes / SECTOR_SIZE;
-                break;
+        existingParts.push_back(part);
+
+        if (ToLower(part.label) == "amdz" || ToLower(part.partLabel) == "amdz") {
+            if (hasAmdz) {
+                error = "Найдено несколько разделов AMDZ. Автоматическая разметка запрещена.";
+                return false;
             }
+            hasAmdz = true;
+            amdz = part;
         }
     }
 
+    std::uint64_t writableStart = FIRST_LBA;
+    std::uint64_t writableEnd = diskSectors > GPT_BACKUP_SECTORS
+                                    ? diskSectors - GPT_BACKUP_SECTORS - 1
+                                    : 0;
+    std::set<std::uint64_t> preservedNumbers;
+    ExistingPart preservedSystem;
+    bool hasPreservedSystem = false;
+    bool amdZAtBeginning = false;
+
     if (hasAmdz) {
-        if (amdzPartition.empty() || amdzSectors == 0) {
-            error = "AMDZ найден, но не удалось определить его размер.";
-            return false;
-        }
-
-        if (amdzStart != FIRST_LBA) {
-            error = "AMDZ найден, но начинается не с LBA 2048.\n\n"
-                    "Для безопасного сохранения AMDZ установщик ожидает, "
-                    "что AMDZ является первым разделом диска.";
-            return false;
-        }
-
-        if (amdzSectors * SECTOR_SIZE < 1024ull * MiB) {
-            error = "AMDZ найден, но его размер меньше 1024 MiB.";
+        if (amdz.number == 0 || amdz.sectors == 0 ||
+            amdz.start + amdz.sectors > diskSectors - GPT_BACKUP_SECTORS) {
+            error = "AMDZ найден, но его геометрия некорректна. Установка остановлена.";
             return false;
         }
 
         std::string pttypeOutput;
-        std::string pttypeError;
-
-        if (!RunCommandCapture("lsblk", {"-dn", "-o", "PTTYPE", disk}, pttypeOutput, pttypeError) || ToLower(pttypeOutput).find("gpt") == std::string::npos) {
-            error = "AMDZ найден, но таблица разделов диска не GPT.\n\n"
-                    "AMDZ должен находиться на GPT-диске.";
+        if (!RunCommandCapture("lsblk", {"-dn", "-o", "PTTYPE", disk}, pttypeOutput, commandError) ||
+            ToLower(pttypeOutput).find("gpt") == std::string::npos) {
+            error = "AMDZ найден, но диск не размечен GPT. AMDZ не будет затронут.";
             return false;
+        }
+
+        const std::uint64_t amdzEnd = amdz.start + amdz.sectors - 1;
+        const bool atBeginning = amdz.start <= AMDZ_DETECTION_RANGE_SECTORS &&
+                                 amdzEnd < diskSectors / 2;
+        const bool atEnd = amdzEnd >= (diskSectors > AMDZ_DETECTION_RANGE_SECTORS
+                                           ? diskSectors - AMDZ_DETECTION_RANGE_SECTORS
+                                           : 0) &&
+                           amdz.start >= diskSectors / 2;
+
+        if (atBeginning == atEnd) {
+            error = "AMDZ находится не однозначно у начала или конца диска. "
+                    "Разметка не изменена, чтобы не повредить AMDZ.";
+            return false;
+        }
+        amdZAtBeginning = atBeginning;
+
+        // Если рядом с AMDZ есть служебный раздел примерно 128 МиБ,
+        // сохраняем его независимо от того, с какой стороны он расположен.
+        // Его отсутствие допустимо: тогда сохраняем только AMDZ.
+        std::uint64_t bestDistance = std::numeric_limits<std::uint64_t>::max();
+
+        for (const auto &part : existingParts) {
+            if (part.number == amdz.number ||
+                part.sectors < MIN_PRESERVED_SYSTEM_SECTORS ||
+                part.sectors > MAX_PRESERVED_SYSTEM_SECTORS)
+                continue;
+
+            const std::uint64_t partEnd = part.start + part.sectors - 1;
+            std::uint64_t distance = std::numeric_limits<std::uint64_t>::max();
+            bool candidate = false;
+
+            if (partEnd < amdz.start) {
+                distance = amdz.start - partEnd - 1;
+                candidate = distance <= ADJACENCY_TOLERANCE_SECTORS;
+            } else if (part.start > amdzEnd) {
+                distance = part.start - amdzEnd - 1;
+                candidate = distance <= ADJACENCY_TOLERANCE_SECTORS;
+            }
+
+            if (candidate && distance < bestDistance) {
+                bestDistance = distance;
+                preservedSystem = part;
+                hasPreservedSystem = true;
+            }
+        }
+
+        preservedNumbers.insert(amdz.number);
+        if (hasPreservedSystem)
+            preservedNumbers.insert(preservedSystem.number);
+
+        if (atBeginning) {
+            // Новые разделы размещаются после AMDZ и любого сохранённого
+            // раздела, который находится сразу за AMDZ.
+            writableStart = amdzEnd + 1;
+            if (hasPreservedSystem && preservedSystem.start > amdzEnd) {
+                writableStart = preservedSystem.start + preservedSystem.sectors;
+            }
+            writableStart = ((writableStart + ALIGNMENT_SECTORS - 1) / ALIGNMENT_SECTORS) * ALIGNMENT_SECTORS;
+        } else {
+            // На конце диска разделы Windows создаются перед AMDZ и любым
+            // сохранённым разделом, который расположен непосредственно перед AMDZ.
+            writableEnd = amdz.start - 1;
+            if (hasPreservedSystem && preservedSystem.start < amdz.start) {
+                writableEnd = preservedSystem.start - 1;
+            }
+            writableEnd = ((writableEnd + 1) / ALIGNMENT_SECTORS) * ALIGNMENT_SECTORS - 1;
         }
 
         std::string amdzMountOutput;
-        std::string amdzMountError;
+        if (RunCommandCapture("findmnt", {"-rn", "-S", amdz.device}, amdzMountOutput, commandError)) {
+            error = "AMDZ смонтирован:\n\n" + amdzMountOutput +
+                    "\n\nРазмонтируйте AMDZ перед установкой.";
+            return false;
+        }
 
-        if (RunCommandCapture("findmnt", {"-rn", "-S", amdzPartition}, amdzMountOutput, amdzMountError)) {
-            error = "AMDZ-раздел уже смонтирован:\n\n" + amdzMountOutput + "\n\nПеред установкой его необходимо размонтировать.";
+    }
+
+    if (writableEnd <= writableStart ||
+        writableEnd - writableStart + 1 <= EFI_SECTORS + MSR_SECTORS + windowsSectors + MIN_DATA_SECTORS) {
+        error = "Недостаточно места между защищёнными разделами для EFI, C: и D:.";
+        return false;
+    }
+
+    // Проверяем каждый существующий раздел до любых изменений GPT.
+    std::string mountOutput;
+    if (RunCommandCapture("findmnt", {"-rn", "-S", disk}, mountOutput, commandError)) {
+        error = "Целевой диск или его раздел уже смонтирован:\n\n" + mountOutput;
+        return false;
+    }
+    for (const auto &part : existingParts) {
+        // Сохранённые AMDZ и служебный раздел не изменяются, поэтому их
+        // монтирование само по себе не мешает установке.
+        if (preservedNumbers.count(part.number))
+            continue;
+
+        std::string partMounts;
+        if (RunCommandCapture("findmnt", {"-rn", "-S", part.device}, partMounts, commandError)) {
+            error = "Раздел целевого диска смонтирован:\n\n" + part.device + "\n" + partMounts +
+                    "\n\nРазмонтируйте его перед установкой.";
             return false;
         }
     }
 
-    std::cout << "\nAMDZ: " << (hasAmdz ? "FOUND - будет сохранён" : "NOT FOUND - диск будет очищен полностью") << '\n';
+    std::string swapOutput;
+    if (RunCommandCapture("swapon", {"--show=NAME", "--noheadings"}, swapOutput, commandError)) {
+        std::istringstream swaps(swapOutput);
+        std::string swapDevice;
+        while (std::getline(swaps, swapDevice)) {
+            if (!swapDevice.empty() && swapDevice.rfind(disk, 0) == 0) {
+                error = "На целевом диске используется swap:\n\n" + swapDevice;
+                return false;
+            }
+        }
+    }
 
-    const std::uint64_t reservedBeforeWindows = FIRST_LBA + (hasAmdz ? amdzSectors : 0) + EFI_SECTORS + MSR_SECTORS;
+    std::filesystem::path executableDirectory;
+    if (!GetExecutableDirectory(executableDirectory, error))
+        return false;
 
-    const std::uint64_t minimumRequired = reservedBeforeWindows + windowsSectors + RECOVERY_SECTORS + GPT_BACKUP_SECTORS;
-
-    if (diskSectors <= minimumRequired) {
-        error = "Недостаточно места на диске для выбранного размера Windows.";
+    const std::filesystem::path bcdSys = executableDirectory / "bcd-sys-2.4-x86_64.AppImage";
+    if (!std::filesystem::exists(bcdSys)) {
+        error = "Не найден BCD-SYS:\n\n" + bcdSys.string();
         return false;
     }
 
-    const std::uint64_t dataSectors = diskSectors - FIRST_LBA - (hasAmdz ? amdzSectors : 0) - EFI_SECTORS - MSR_SECTORS - windowsSectors - RECOVERY_SECTORS - GPT_BACKUP_SECTORS;
-
-    if (dataSectors == 0) {
-        error = "Не удалось выделить раздел Data.";
+    const std::filesystem::path isoPath = "/Windows10.iso";
+    std::error_code isoError;
+    if (!std::filesystem::exists(isoPath, isoError)) {
+        error = isoError
+            ? "Не удалось проверить ISO Windows:\n\n" + isoPath.string() + "\n\n" + isoError.message()
+            : "Не найден ISO Windows:\n\n" + isoPath.string();
         return false;
     }
 
-    const std::uint64_t efiStart = hasAmdz ? FIRST_LBA + amdzSectors : FIRST_LBA;
+    // При наличии AMDZ удаляем все остальные разделы, кроме AMDZ и соседнего
+    // служебного раздела около 128 МиБ. Таблица GPT целиком не пересоздаётся.
+    ReportProgress(0.10f, hasAmdz ? "Сохранение AMDZ и найденного соседнего служебного раздела, очистка остальных разделов..." : "Подготовка чистой разметки...");
 
+    if (!hasAmdz) {
+        if (!RunPrivilegedCommand("sgdisk", {"--zap-all", disk}, error) ||
+            !RunPrivilegedCommand("sgdisk", {"-o", disk}, error))
+            return false;
+        existingParts.clear();
+        preservedNumbers.clear();
+    } else {
+        for (const auto &part : existingParts) {
+            if (preservedNumbers.count(part.number))
+                continue;
+            if (!RunPrivilegedCommand("sgdisk", {"-d", std::to_string(part.number), disk}, error))
+                return false;
+        }
+    }
+
+    // Выделяем свободные номера GPT, не меняя номер AMDZ и защищённых разделов.
+    std::vector<unsigned int> newNumbers;
+    for (unsigned int n = 1; n <= 128 && newNumbers.size() < 4; ++n) {
+        if (!preservedNumbers.count(n))
+            newNumbers.push_back(n);
+    }
+    if (newNumbers.size() != 4) {
+        error = "Не удалось выделить четыре свободных номера GPT-разделов.";
+        return false;
+    }
+
+    const std::uint64_t efiStart = writableStart;
     const std::uint64_t efiEnd = efiStart + EFI_SECTORS - 1;
     const std::uint64_t msrStart = efiEnd + 1;
     const std::uint64_t msrEnd = msrStart + MSR_SECTORS - 1;
     const std::uint64_t windowsStart = msrEnd + 1;
     const std::uint64_t windowsEnd = windowsStart + windowsSectors - 1;
     const std::uint64_t dataStart = windowsEnd + 1;
-    const std::uint64_t dataEnd = dataStart + dataSectors - 1;
-    const std::uint64_t recoveryStart = dataEnd + 1;
-    const std::uint64_t recoveryEnd = recoveryStart + RECOVERY_SECTORS - 1;
+    const std::uint64_t dataEnd = writableEnd;
 
-    if (recoveryEnd + GPT_BACKUP_SECTORS >= diskSectors) {
-        error = "Ошибка расчёта GPT-разметки.";
+    if (dataEnd <= dataStart || dataEnd - dataStart + 1 < MIN_DATA_SECTORS) {
+        error = "После создания C: недостаточно места для D:.";
         return false;
     }
 
-    ReportProgress(0.06f, "Подготовка полной очистки диска...");
+    const auto AddGptPartition = [&](unsigned int number, std::uint64_t first, std::uint64_t last,
+                                     const std::string &type, const std::string &name) -> bool {
+        return RunPrivilegedCommand("sgdisk",
+                                    {"-n", std::to_string(number) + ":" + std::to_string(first) + ":" + std::to_string(last),
+                                     "-t", std::to_string(number) + ":" + type,
+                                     "-c", std::to_string(number) + ":" + name, disk},
+                                    error);
+    };
 
-    std::cout << "\n========================================\n"
-              << " UEFI / Clean Disk installation\n"
-              << "========================================\n"
-              << "Target:       " << disk << '\n'
-              << "Disk size:    " << static_cast<double>(diskSize) / MiB << " MiB\n";
-
-    if (hasAmdz) {
-        std::cout << "AMDZ:         " << amdzPartition << " (" << static_cast<double>(amdzSectors * SECTOR_SIZE) / MiB << " MiB) - PRESERVED\n";
-    }
-
-    std::cout << "EFI:          512 MiB\n"
-              << "MSR:          16 MiB\n"
-              << "Windows C:    " << static_cast<double>(windowsSize) / MiB << " MiB\n"
-              << "Data D:       " << static_cast<double>(dataSectors * SECTOR_SIZE) / MiB << " MiB\n"
-              << "Recovery:     800 MiB\n"
-              << "========================================\n";
-
-    /*
-     * Проверяем, что целевой диск и его существующие разделы
-     * не используются как mounted filesystem.
-     */
-    ReportProgress(0.08f, "Проверка диска...");
-
-    std::string mountOutput;
-    std::string mountError;
-
-    if (RunCommandCapture("findmnt", {"-rn", "-S", disk}, mountOutput, mountError)) {
-        error = "Целевой диск или его раздел уже смонтирован:\n\n" + mountOutput + "\n\nПеред очисткой необходимо размонтировать его.";
+    if (!AddGptPartition(newNumbers[0], efiStart, efiEnd, "EF00", "EFI") ||
+        !AddGptPartition(newNumbers[1], msrStart, msrEnd, "0C01", "MSR") ||
+        !AddGptPartition(newNumbers[2], windowsStart, windowsEnd, "0700", "Windows") ||
+        !AddGptPartition(newNumbers[3], dataStart, dataEnd, "0700", "Data"))
         return false;
-    }
 
-    /*
-     * Проверяем swap.
-     */
-    std::string swapOutput;
-    std::string swapError;
-
-    if (RunCommandCapture("swapon", {"--show=NAME", "--noheadings"}, swapOutput, swapError)) {
-        std::istringstream swapStream(swapOutput);
-        std::string swapDevice;
-
-        while (std::getline(swapStream, swapDevice)) {
-            if (swapDevice.empty())
-                continue;
-
-            if (swapDevice.rfind(disk, 0) == 0) {
-                error = "На целевом диске используется swap:\n\n" + swapDevice + "\n\nОперация остановлена.";
-                return false;
-            }
-        }
-    }
-
-    /*
-     * Ищем необходимые утилиты.
-     */
-    std::filesystem::path executableDirectory;
-
-    if (!GetExecutableDirectory(executableDirectory, error)) {
+    if (!RunPrivilegedCommand("partprobe", {disk}, error) ||
+        !RunPrivilegedCommand("udevadm", {"settle"}, error))
         return false;
-    }
-
-    const auto bcdSys = executableDirectory / "bcd-sys-2.4-x86_64.AppImage";
-
-    if (!std::filesystem::exists(bcdSys)) {
-        error = "Не найден BCD-SYS:\n\n" + bcdSys.string();
-        return false;
-    }
-
-    /*
-     * ISO Windows.
-     */
-    const std::filesystem::path isoPath = "/Windows10.iso";
-
-    std::error_code isoError;
-
-    if (!std::filesystem::exists(isoPath, isoError)) {
-        if (isoError) {
-            error = "Не удалось проверить ISO Windows:\n\n" + isoPath.string() + "\n\nОшибка: " + isoError.message();
-        }
-        else {
-            error = "Не найден ISO Windows:\n\n" + isoPath.string();
-        }
-        return false;
-    }
-
-    const std::filesystem::path isoMount = "/mnt/winiso";
-    const std::filesystem::path windowsMount = "/mnt/windows";
-    const std::filesystem::path efiMount = "/mnt/efi";
-
-    if (!RunPrivilegedCommand("mkdir", {"-p", isoMount.string(), windowsMount.string(), efiMount.string()}, error)) {
-        return false;
-    }
-
-    std::string cleanupError;
-
-    RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
-    RunPrivilegedCommand("umount", {efiMount.string()}, cleanupError);
-    RunPrivilegedCommand("umount", {isoMount.string()}, cleanupError);
-
-    /*
-     * Если AMDZ НЕТ — полностью очищаем старую таблицу.
-     *
-     * Если AMDZ ЕСТЬ — wipefs всего диска запрещён:
-     * содержимое AMDZ должно остаться нетронутым.
-     */
-    ReportProgress(0.12f, hasAmdz ? "Сохранение AMDZ и создание новой разметки..." : "Очистка старой разметки...");
-
-    if (!hasAmdz) {
-        if (!RunPrivilegedCommand("wipefs", {"-a", disk}, error)) {
-            return false;
-        }
-    }
-
-    /*
-     * Формируем новую GPT.
-     *
-     * Без AMDZ:
-     *   1 EFI
-     *   2 MSR
-     *   3 Windows
-     *   4 Data
-     *   5 Recovery
-     *
-     * С AMDZ:
-     *   1 AMDZ       <- существующий, НЕ форматируется
-     *   2 EFI
-     *   3 MSR
-     *   4 Windows
-     *   5 Data
-     *   6 Recovery
-     *
-     * Для AMDZ сохраняем его точные start/size.
-     */
-    std::ostringstream partitionTable;
-
-    partitionTable << "label: gpt\n"
-                   << "unit: sectors\n"
-                   << "\n";
-
-    if (hasAmdz) {
-        partitionTable << "start=" << amdzStart << ", size=" << amdzSectors << ", type=" << AMDZ_PARTITION_TYPE << ", name=\"AMDZ\"\n\n";
-    }
-
-    partitionTable << "start=" << efiStart << ", size=" << EFI_SECTORS << ", type=" << EFI_PARTITION_TYPE << ", name=\"EFI\"\n\n"
-                   << "start=" << msrStart << ", size=" << MSR_SECTORS << ", type=" << MSR_PARTITION_TYPE << ", name=\"MSR\"\n\n"
-                   << "start=" << windowsStart << ", size=" << windowsSectors << ", type=" << WINDOWS_PARTITION_TYPE << ", name=\"Windows\"\n\n"
-                   << "start=" << dataStart << ", size=" << dataSectors << ", type=" << WINDOWS_PARTITION_TYPE << ", name=\"Data\"\n\n"
-                   << "start=" << recoveryStart << ", size=" << RECOVERY_SECTORS << ", type=" << RECOVERY_PARTITION_TYPE << ", name=\"Recovery\"\n";
-
-    std::cout << "\nGPT partition table:\n" << partitionTable.str() << '\n';
-
-    ReportProgress(0.15f, "Создание GPT-разметки...");
-
-    if (!RunPrivilegedCommandWithInput("sfdisk", {disk}, partitionTable.str(), error)) {
-        return false;
-    }
-
-    if (!RunPrivilegedCommand("partprobe", {disk}, error)) {
-        return false;
-    }
-
-    if (!RunPrivilegedCommand("udevadm", {"settle"}, error)) {
-        return false;
-    }
-
     usleep(500000);
 
-    /*
-     * Формируем имена устройств с учётом NVMe/mmc:
-     * /dev/sdb  -> /dev/sdb1
-     * /dev/nvme0n1 -> /dev/nvme0n1p1
-     */
     const auto PartitionDevice = [&](unsigned int number) {
         const bool needsP = !disk.empty() && std::isdigit(static_cast<unsigned char>(disk.back()));
         return disk + (needsP ? "p" : "") + std::to_string(number);
     };
 
-    const unsigned int efiNumber = hasAmdz ? 2 : 1;
-    const unsigned int msrNumber = hasAmdz ? 3 : 2;
-    const unsigned int windowsNumber = hasAmdz ? 4 : 3;
-    const unsigned int dataNumber = hasAmdz ? 5 : 4;
-    const unsigned int recoveryNumber = hasAmdz ? 6 : 5;
+    const std::string efiPartition = PartitionDevice(newNumbers[0]);
+    const std::string windowsPartition = PartitionDevice(newNumbers[2]);
+    const std::string dataPartition = PartitionDevice(newNumbers[3]);
 
-    const std::string efiPartition = PartitionDevice(efiNumber);
-    const std::string msrPartition = PartitionDevice(msrNumber);
-    const std::string windowsPartition = PartitionDevice(windowsNumber);
-    const std::string dataPartition = PartitionDevice(dataNumber);
-    const std::string recoveryPartition = PartitionDevice(recoveryNumber);
+    std::cout << "\n========================================\n"
+              << " UEFI installation / " << (context.Mode == InstallMode::CleanDisk ? "manual partitioning" : "C: 120 GiB, rest D:")
+              << "\nTarget: " << disk
+              << "\nAMDZ: " << (hasAmdz ? amdz.device + " (preserved)" : "not found")
+              << "\nPreserved system partition: " << (hasPreservedSystem ? preservedSystem.device + " (preserved)" : "none")
+              << "\nAMDZ position: " << (hasAmdz ? (amdZAtBeginning ? "beginning; install after AMDZ" : "end; install before AMDZ") : "none")
+              << "\nWritable start LBA: " << writableStart
+              << "\nWritable end LBA: " << writableEnd
+              << "\nC: " << static_cast<double>(windowsSize) / MiB << " MiB"
+              << "\nD: " << static_cast<double>((dataEnd - dataStart + 1) * SECTOR_SIZE) / MiB << " MiB\n"
+              << "========================================\n";
 
-    std::cout << "\nPartitions:\n";
+    const std::filesystem::path isoMount = "/mnt/winiso";
+    const std::filesystem::path windowsMount = "/mnt/windows";
+    const std::filesystem::path efiMount = "/mnt/efi";
 
-    if (hasAmdz)
-        std::cout << "AMDZ:     " << PartitionDevice(1) << " (preserved)\n";
+    if (!RunPrivilegedCommand("mkdir", {"-p", isoMount.string(), windowsMount.string(), efiMount.string()}, error))
+        return false;
 
-    std::cout << "EFI:      " << efiPartition << '\n'
-              << "MSR:      " << msrPartition << '\n'
-              << "Windows:  " << windowsPartition << '\n'
-              << "Data:     " << dataPartition << '\n'
-              << "Recovery: " << recoveryPartition << '\n';
+    std::string cleanupError;
+    RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+    RunPrivilegedCommand("umount", {efiMount.string()}, cleanupError);
+    RunPrivilegedCommand("umount", {isoMount.string()}, cleanupError);
 
     /*
      * AMDZ здесь специально НЕ форматируем.
@@ -2078,12 +2078,6 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
     ReportProgress(0.24f, "Форматирование Data...");
 
     if (!RunPrivilegedCommand("mkfs.ntfs", {"-f", "-L", "Data", dataPartition}, error)) {
-        return false;
-    }
-
-    ReportProgress(0.26f, "Подготовка Recovery...");
-
-    if (!RunPrivilegedCommand("mkfs.ntfs", {"-f", "-L", "Recovery", recoveryPartition}, error)) {
         return false;
     }
 
@@ -2357,10 +2351,10 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
     const std::string disk = NormalizeDevice(context.SelectedDisk->Device);
 
     /* AMDZ относится только к UEFI/GPT и здесь намеренно не учитывается. */
-    if (disk == "/dev/sda") {
-        error = "Операция остановлена: /dev/sda запрещён для установки Windows.";
-        return false;
-    }
+    // if (disk == "/dev/sda") {
+    //     error = "Операция остановлена: /dev/sda запрещён для установки Windows.";
+    //     return false;
+    // }
 
     const std::uint64_t diskSize = context.SelectedDisk->Size;
     const std::uint64_t diskSectors = diskSize / SECTOR_SIZE;
@@ -2455,6 +2449,22 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
         else {
             error = "Не найден ISO Windows:\n\n" + isoPath.string();
         }
+        return false;
+    }
+
+    // AMDZ нельзя сохранять безопасно при преобразовании GPT в MBR.
+    // Не начинаем разрушительную Legacy-разметку, если на диске обнаружен AMDZ.
+    std::string labelOutput;
+    std::string labelError;
+    if (!RunCommandCapture("lsblk", {"-P", "-p", "-o", "NAME,TYPE,LABEL,PARTLABEL", disk}, labelOutput, labelError)) {
+        error = "Не удалось проверить AMDZ. Legacy-очистка остановлена.";
+        return false;
+    }
+    const std::string lowerLabels = ToLower(labelOutput);
+    if (lowerLabels.find("label=\"amdz\"") != std::string::npos ||
+        lowerLabels.find("partlabel=\"amdz\"") != std::string::npos) {
+        error = "На диске обнаружен AMDZ. Полная установка в Legacy BIOS/MBR запрещена, "
+                "поскольку она может повредить AMDZ. Загрузите установщик в режиме UEFI.";
         return false;
     }
 
@@ -3061,7 +3071,7 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
      * Код оставлен для последующего включения.
      */
 
-    //if (!RunPrivilegedCommand("cp", {setupComplete.string(), (setupScriptsDirectory / "SetupComplete.cmd").string()}, error)) {
+    // if (!RunPrivilegedCommand("cp", {setupComplete.string(), (setupScriptsDirectory / "SetupComplete.cmd").string()}, error)) {
 
     //    RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
