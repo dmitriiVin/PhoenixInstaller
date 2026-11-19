@@ -21,10 +21,39 @@ async function render() {
     ['clean_disk','Ручная разметка','Выберите размер C:. Остальное — D:. AMDZ сохраняется.']]) {
       const l=element('label',title);element('p',description,l);const i=element('input','',l);i.type='radio';i.name='mode';i.checked=state.mode===value;i.onchange=()=>{state.mode=value;};
     }
-  if(step===3) {if(state.mode==='clean_disk'){const i=input('Размер Windows, ГиБ','windows_size_gb','number');i.min='100';}else element('p',state.mode==='reinstall_windows'?'Используется существующий раздел Windows.':'Размер Windows: 120 ГиБ.');input('Индекс редакции в образе Windows','edition','number').min='1';}
-  if(step===4) {input('Устанавливать драйверы','drivers','checkbox'); for(const p of catalog){const l=element('label',`${p.name} — ${p.description}`);const i=element('input','',l);i.type='checkbox';i.checked=state.packages.includes(p.id);i.onchange=()=>{state.packages=state.packages.filter(id=>id!==p.id);if(i.checked)state.packages.push(p.id);};}}
+  if(step===3) {if(state.mode==='clean_disk'){const i=input('Размер Windows, ГиБ','windows_size_gb','number');i.min='100';}else element('p',state.mode==='reinstall_windows'?'Используется существующий раздел Windows.':'Размер Windows: 120 ГиБ.');}
+  if(step===4) {for(const p of catalog){const l=element('label',`${p.name} — ${p.description}`);const i=element('input','',l);i.type='checkbox';i.checked=state.packages.includes(p.id);i.onchange=()=>{state.packages=state.packages.filter(id=>id!==p.id);if(i.checked)state.packages.push(p.id);};}}
   if(step===5) {input('Изменить имя компьютера','change_name','checkbox');input('Имя компьютера','computer_name').maxLength=15;}
-  if(step===6) {element('pre',JSON.stringify(state,null,2));try{const config=await invoke('preview_config',{settings:state});if(state.mode!=='reinstall_windows'){const plan=await invoke('preview_partition_plan',{settings:state});element('h3','План разметки (предпросмотр)');element('pre',JSON.stringify(plan,null,2));}element('h3','Конфигурация после установки');element('pre',JSON.stringify(config,null,2));const start=element('button','Начать установку');start.onclick=async()=>{
+  if(step===6) {try{
+    const config=await invoke('preview_config',{settings:state});
+    if(step!==6)return;
+    const summary=element('dl');summary.className='summary';
+    const row=(title,value)=>{element('dt',title,summary);element('dd',value,summary);};
+    const disk=diskList.find(d=>d.name===state.device);
+    const size=bytes=>`${(Number(bytes)/2**30).toLocaleString('ru-RU',{maximumFractionDigits:1})} ГиБ`;
+    row('Диск',disk?`${disk.model||disk.name} · /dev/${disk.name} · ${size(disk.size)}`:`/dev/${state.device}`);
+    row('Способ установки',({reinstall_windows:'Переустановка Windows',reinstall_windows_and_format_data:'Полная очистка и переустановка',clean_disk:'Ручная разметка'})[state.mode]);
+    row('Раздел Windows (C:)',state.mode==='reinstall_windows'?'Существующий раздел будет отформатирован':`${state.mode==='clean_disk'?state.windows_size_gb:120} ГиБ`);
+    row('Данные (D:)',state.mode==='reinstall_windows'?'Сохраняются':'Будут удалены; раздел займёт оставшееся место');
+    row('Имя компьютера',config.computer.change_name?config.computer.name:'Без изменений');
+    row('Драйверы','Будут установлены автоматически');
+    row('Программы',state.packages.length?state.packages.map(id=>catalog.find(p=>p.id===id)?.name||id).join(', '):'Не выбраны');
+    if(state.mode!=='reinstall_windows'){
+      const plan=await invoke('preview_partition_plan',{settings:state});
+      if(step!==6)return;
+      element('h3','Разметка после установки');
+      const table=element('table');table.className='partition-table';
+      const header=element('tr','',element('thead','',table));
+      for(const title of ['Раздел','Размер'])element('th',title,header);
+      const body=element('tbody','',table);
+      const partition=(name,sectors)=>{const tr=element('tr','',body);element('td',name,tr);element('td',size(sectors*512),tr);};
+      if(plan.table==='dos'){partition('Windows (C:)',plan.windows.sectors);partition('Data (D:)',plan.data.sectors);}
+      else{for(const p of plan.create)partition(({EFI:'EFI — загрузчик',MSR:'MSR — служебный',Windows:'Windows (C:)',Data:'Data (D:)'})[p.name]||p.name,p.end-p.start+1);
+        if(plan.preserved.length)element('p',`Сохраняемые разделы (AMDZ и служебный, если найден): № ${plan.preserved.join(', № ')}`);
+      }
+    }
+    element('p',state.mode==='reinstall_windows'?'Будут удалены данные на разделе Windows (C:). После успешной установки компьютер перезагрузится.':'Данные на C: и D: будут удалены. После успешной установки компьютер перезагрузится.').className='installation-notice';
+    const start=element('button','Начать установку');start.onclick=async()=>{
  const back=document.querySelector('#back');start.disabled=true;back.disabled=true;
  const bar=element('progress');bar.max=1;bar.value=0;const status=element('p','Подготовка установки');
  let unlisten;

@@ -23,7 +23,7 @@ Place the Windows ISO at `/Windows10.iso`. Boot Ventoy with its volume mounted u
 - Full reinstall: create Windows at 120 GiB and allocate the remaining space to Data.
 - Manual layout: select Windows size (minimum 100 GiB), allocating the remainder to Data.
 
-UEFI layouts preserve AMDZ at either end of a GPT disk and an adjacent service partition of 64–192 MiB. Legacy uses MBR and rejects AMDZ for repartitioning. Geometry assumes 512-byte logical sectors; other sector sizes are rejected. Mounted target disks and active swap are rejected. WIM edition and payload resources are checked before disk modification. The installer reboots after successful deployment, boot verification and file staging.
+UEFI layouts preserve AMDZ at either end of a GPT disk and an adjacent service partition of 64–192 MiB. Legacy uses MBR and rejects AMDZ for repartitioning. Geometry assumes 512-byte logical sectors; other sector sizes are rejected. Mounted target disks and active swap are rejected. WIM edition and payload resources are checked before disk modification. The installer reboots after successful deployment, boot verification and file staging. The Windows image index is always 2; drivers are always installed (`drivers: true` in the configuration).
 
 ## Validation
 

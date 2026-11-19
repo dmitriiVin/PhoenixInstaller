@@ -5,11 +5,19 @@ pub struct Settings {
     pub device: String,
     pub mode: String,
     pub windows_size_gb: u64,
+    #[serde(skip_deserializing, default = "default_edition")]
     pub edition: u32,
+    #[serde(skip_deserializing, default = "default_drivers")]
     pub drivers: bool,
     pub change_name: bool,
     pub computer_name: String,
     pub packages: Vec<String>,
+}
+fn default_edition() -> u32 {
+    2
+}
+fn default_drivers() -> bool {
+    true
 }
 impl Settings {
     pub fn validate(&self) -> Result<(), String> {
@@ -56,7 +64,7 @@ impl Settings {
             packages.push(json!({"id":p["id"],"folder":p["folder"],"installer":p["installer"],"arguments":p["arguments"]}));
         }
         Ok(
-            json!({"computer":{"change_name":self.change_name,"name":self.computer_name},"drivers":self.drivers,"packages":packages}),
+            json!({"computer":{"change_name":self.change_name,"name":self.computer_name},"drivers":true,"packages":packages}),
         )
     }
 }
@@ -96,5 +104,17 @@ mod tests {
         s = settings();
         s.windows_size_gb = 99;
         assert!(s.validate().is_err());
+    }
+}
+
+#[cfg(test)]
+mod defaults_tests {
+    use super::*;
+    #[test]
+    fn fixed_installation_defaults_override_input() {
+        let s:Settings=serde_json::from_value(json!({"device":"sda","mode":"reinstall_windows","windows_size_gb":150,"edition":9,"drivers":false,"change_name":false,"computer_name":"","packages":[]})).unwrap();
+        assert_eq!(s.edition, 2);
+        assert!(s.drivers);
+        assert_eq!(s.post_install().unwrap()["drivers"], true);
     }
 }

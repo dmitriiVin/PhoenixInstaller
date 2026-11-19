@@ -2,7 +2,7 @@
 
 The Tauri entry point is `src-tauri/src/main.rs`; the Rust installation orchestrator is `install.rs`. The application backend is Rust; the Tauri UI is HTML/CSS/JavaScript. The old C++ application, CMake build, ImGui renderer and C++ library submodules have been removed.
 
-Implemented in Rust: disk enumeration/partition roles, settings and package validation, post-install configuration, GPT/AMDZ partition planning, Legacy/MBR creation, process execution/elevation, Ventoy/Data discovery, mount cleanup, WIM application, UEFI/BIOS boot configuration and verification, payload staging, reboot, async Tauri invocation and progress events. The Russian wizard supports all three installation modes, partition size, image edition, programs, drivers and computer name.
+Implemented in Rust: disk enumeration/partition roles, settings and package validation, post-install configuration, GPT/AMDZ partition planning, Legacy/MBR creation, process execution/elevation, Ventoy/Data discovery, mount cleanup, WIM application, UEFI/BIOS boot configuration and verification, payload staging, reboot, async Tauri invocation and progress events. The Russian wizard supports all three installation modes, partition size, programs and computer name; image index is fixed at 2 and drivers are always enabled.
 
 PSetup.exe, bcd-sys and ms-sys remain external binaries, as requested. PSetup's configuration format and staged files follow the previous Linux implementation.
 
