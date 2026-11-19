@@ -32,4 +32,4 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml
 node --check frontend/app.js
 ```
 
-CI builds on Ubuntu. Local macOS builds can verify compilation and launch the wizard; disk installation requires Linux Live. End-to-end UEFI/Legacy installation must be validated in a disposable VM with representative disks before production use. The previous C++ source is retained as a migration reference and is not used by the Tauri build.
+CI builds on Ubuntu. Local macOS builds can verify compilation and launch the wizard; disk installation requires Linux Live. End-to-end UEFI/Legacy installation must be validated in a disposable VM with representative disks before production use. The application backend is implemented entirely in Rust. The Tauri interface uses HTML/CSS/JavaScript. No C++ application sources, CMake build files or former C++ library submodules are included.
