@@ -145,7 +145,10 @@ pub fn stage(
             &win.join(target),
         )?;
     }
-    copy(&resources.join("PSetup.exe"), &post.join("PSetup.exe"))?;
+    copy(
+        &resources.join("assets/PSetup.exe"),
+        &post.join("PSetup.exe"),
+    )?;
     privileged(
         "tee",
         &[post
