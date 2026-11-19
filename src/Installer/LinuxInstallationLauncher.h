@@ -59,4 +59,8 @@ class LinuxInstallationLauncher {
     static std::string NormalizeDevice(const std::string &device);
 
     static bool CreatePostInstallConfig(const InstallerContext &context, const std::filesystem::path &configPath, std::string &error);
+
+    static bool FindLiveDataDirectory(std::filesystem::path &directory, std::string &error);
+
+    static bool CopyPostInstallAssets(const std::filesystem::path &postInstallDirectory, const ProgressCallback &progress, float progressStart, float progressEnd, std::string &error);
 };

@@ -71,6 +71,15 @@ bool IsEfiPartition(const std::string &filesystem, const std::string &label, con
     return false;
 }
 
+// Возвращает строковое поле JSON или пустую строку, если ключ отсутствует,
+// имеет значение null либо содержит значение другого типа.
+std::string JsonStringOrEmpty(const nlohmann::json &node, const char *key) {
+    if (!node.is_object() || !node.contains(key) || !node[key].is_string())
+        return {};
+
+    return node[key].get<std::string>();
+}
+
 } // namespace
 
 std::string LinuxInstallationLauncher::NormalizeDevice(const std::string &device) {
@@ -523,6 +532,213 @@ bool RunPrivilegedCommandWithProgress(const std::string &program, const std::vec
     return false;
 }
 
+bool LinuxInstallationLauncher::FindLiveDataDirectory(std::filesystem::path &directory, std::string &error) {
+    // Определяем физический диск по смонтированному разделу Ventoy,
+    // включая вложенные устройства device-mapper, затем ищем Data только
+    // среди непосредственных разделов этого физического диска.
+    std::string output;
+    if (!RunCommandCapture("lsblk", {"-J", "-o", "NAME,TYPE,FSTYPE,LABEL,MOUNTPOINTS"}, output, error))
+        return false;
+
+    nlohmann::json tree;
+    try {
+        tree = nlohmann::json::parse(output);
+    }
+    catch (const std::exception &exception) {
+        error = std::string("Не удалось разобрать вывод lsblk: ") + exception.what();
+        return false;
+    }
+
+    if (!tree.is_object() || !tree.contains("blockdevices") || !tree["blockdevices"].is_array()) {
+        error = "lsblk не вернул список блочных устройств.";
+        return false;
+    }
+
+    const auto mountpointOf = [](const nlohmann::json &node) -> std::string {
+        if (!node.is_object() || !node.contains("mountpoints") || node["mountpoints"].is_null())
+            return {};
+
+        const auto &mountpoints = node["mountpoints"];
+        if (mountpoints.is_array()) {
+            for (const auto &mountpoint : mountpoints) {
+                if (mountpoint.is_string()) {
+                    const std::string value = mountpoint.get<std::string>();
+                    if (!value.empty())
+                        return value;
+                }
+            }
+        }
+        else if (mountpoints.is_string()) {
+            return mountpoints.get<std::string>();
+        }
+
+        return {};
+    };
+
+    // lsblk может показывать смонтированный том Ventoy не в sda1,
+    // а во вложенном dm-устройстве. Поэтому проверяем всё дерево.
+    std::function<bool(const nlohmann::json &)> hasMountedVentoy;
+    hasMountedVentoy = [&](const nlohmann::json &node) -> bool {
+        const std::string label = ToLower(JsonStringOrEmpty(node, "label"));
+        const std::string mountpoint = mountpointOf(node);
+
+        if (label == "ventoy" && mountpoint.rfind("/run/media/", 0) == 0)
+            return true;
+
+        if (node.is_object() && node.contains("children") && node["children"].is_array()) {
+            for (const auto &child : node["children"]) {
+                if (hasMountedVentoy(child))
+                    return true;
+            }
+        }
+
+        return false;
+    };
+
+    std::string liveDisk;
+    std::string dataDevice;
+    std::string dataMount;
+
+    for (const auto &diskNode : tree["blockdevices"]) {
+        if (JsonStringOrEmpty(diskNode, "type") != "disk")
+            continue;
+
+        if (!hasMountedVentoy(diskNode))
+            continue;
+
+        liveDisk = JsonStringOrEmpty(diskNode, "name");
+        if (!diskNode.contains("children") || !diskNode["children"].is_array())
+            continue;
+
+        // Data должен быть обычным разделом (type=part) на том же диске.
+        for (const auto &child : diskNode["children"]) {
+            if (JsonStringOrEmpty(child, "type") != "part")
+                continue;
+            if (ToLower(JsonStringOrEmpty(child, "label")) != "data")
+                continue;
+
+            const std::string name = JsonStringOrEmpty(child, "name");
+            if (name.empty())
+                continue;
+
+            dataDevice = name.rfind("/dev/", 0) == 0 ? name : "/dev/" + name;
+            dataMount = mountpointOf(child);
+            break;
+        }
+
+        if (!dataDevice.empty())
+            break;
+    }
+
+    if (dataDevice.empty()) {
+        error = "Не найден раздел Data на физическом диске со смонтированным Ventoy. "
+                "Проверьте, что раздел Data существует и имеет метку Data.";
+        return false;
+    }
+
+    // Если Data ещё не смонтирован, монтируем его только для чтения.
+    if (dataMount.empty()) {
+        const std::filesystem::path mountPath = "/mnt/phoenix-live-data";
+        if (!RunPrivilegedCommand("mkdir", {"-p", mountPath.string()}, error))
+            return false;
+
+        // На случай повторного запуска проверяем, не смонтирован ли уже
+        // именно этот раздел в нашу точку монтирования.
+        std::string findmntOutput;
+        std::string findmntError;
+        if (RunCommandCapture("findmnt", {"-rn", "-S", dataDevice, "-T", mountPath.string(), "-o", "TARGET"}, findmntOutput, findmntError) && !findmntOutput.empty()) {
+            dataMount = findmntOutput;
+            while (!dataMount.empty() && (dataMount.back() == '\n' || dataMount.back() == '\r'))
+                dataMount.pop_back();
+        }
+        else {
+            std::string mountError;
+            if (!RunPrivilegedCommand("mount", {"-t", "ntfs3", "-o", "ro", dataDevice, mountPath.string()}, mountError)) {
+                std::string ntfsError = mountError;
+                if (!RunPrivilegedCommand("mount", {"-o", "ro", dataDevice, mountPath.string()}, mountError)) {
+                    error = "Не удалось смонтировать раздел Data загрузочной флешки (" + dataDevice + ").\n\n" + "Попытка ntfs3: " + ntfsError + "\n" + "Повторная попытка: " + mountError;
+                    return false;
+                }
+            }
+            dataMount = mountPath.string();
+        }
+    }
+
+    directory = dataMount;
+    std::error_code fsError;
+    const auto drivers = directory / "Drivers";
+    const auto programs = directory / "Programs";
+
+    if (!std::filesystem::is_directory(drivers, fsError) || fsError) {
+        error = "На разделе Data загрузочной флешки не найдена папка Drivers:\n\n" + drivers.string();
+        return false;
+    }
+
+    fsError.clear();
+    if (!std::filesystem::is_directory(programs, fsError) || fsError) {
+        error = "На разделе Data загрузочной флешки не найдена папка Programs:\n\n" + programs.string();
+        return false;
+    }
+
+    std::string rsyncVersion;
+    std::string rsyncError;
+    if (!RunCommandCapture("rsync", {"--version"}, rsyncVersion, rsyncError)) {
+        error = "В Live Linux не найден rsync, необходимый для копирования файлов с отображением процентов.";
+        return false;
+    }
+
+    std::cout << "\nLive USB disk: /dev/" << liveDisk << "\n"
+              << "Live Data device: " << dataDevice << "\n"
+              << "Live Data mount: " << directory << "\n";
+    return true;
+}
+
+bool LinuxInstallationLauncher::CopyPostInstallAssets(const std::filesystem::path &postInstallDirectory, const ProgressCallback &progress, float progressStart, float progressEnd, std::string &error) {
+    std::filesystem::path dataDirectory;
+    if (!FindLiveDataDirectory(dataDirectory, error))
+        return false;
+
+    const std::filesystem::path sourceDrivers = dataDirectory / "Drivers";
+    const std::filesystem::path sourcePrograms = dataDirectory / "Programs";
+
+    if (!RunPrivilegedCommand("mkdir", {"-p", (postInstallDirectory / "Drivers").string(), (postInstallDirectory / "Programs").string()}, error))
+        return false;
+
+    auto report = [&](float fraction, const std::string &label) {
+        const float clamped = std::clamp(fraction, 0.0f, 1.0f);
+        if (progress)
+            progress(progressStart + (progressEnd - progressStart) * clamped, label);
+    };
+
+    report(0.0f, "Копирование Drivers и Programs: 0%");
+
+    // rsync сохраняет структуру каталогов и выдаёт фактический общий прогресс.
+    // Отдельные диапазоны оставляют понятный статус текущего каталога.
+    if (!RunPrivilegedCommandWithProgress(
+            "rsync", {"-a", "--info=progress2", "--human-readable", sourceDrivers.string(), postInstallDirectory.string() + "/"},
+            [&](float value) { report(value * 0.5f, "Копирование Drivers... " + std::to_string(static_cast<int>(value * 100.0f)) + "%"); }, error))
+        return false;
+
+    if (!RunPrivilegedCommandWithProgress(
+            "rsync", {"-a", "--info=progress2", "--human-readable", sourcePrograms.string(), postInstallDirectory.string() + "/"},
+            [&](float value) { report(0.5f + value * 0.5f, "Копирование Programs... " + std::to_string(static_cast<int>(value * 100.0f)) + "%"); }, error))
+        return false;
+
+    std::error_code fsError;
+    if (!std::filesystem::is_directory(postInstallDirectory / "Drivers", fsError) || fsError) {
+        error = "После копирования не найдена папка Drivers:\n\n" + (postInstallDirectory / "Drivers").string();
+        return false;
+    }
+    fsError.clear();
+    if (!std::filesystem::is_directory(postInstallDirectory / "Programs", fsError) || fsError) {
+        error = "После копирования не найдена папка Programs:\n\n" + (postInstallDirectory / "Programs").string();
+        return false;
+    }
+
+    report(1.0f, "Drivers и Programs скопированы.");
+    return true;
+}
+
 bool LinuxInstallationLauncher::RunCommandCapture(const std::string &program, const std::vector<std::string> &arguments, std::string &output, std::string &error) {
     std::cout << "\n$ " << program;
 
@@ -777,44 +993,61 @@ bool LinuxInstallationLauncher::Install(const InstallerContext &context, std::st
         return false;
     }
 
-    const bool uefi = IsUEFI();
+    ReportProgress(0.01f, "Проверка Live-флешки и файлов Drivers/Programs...");
+    std::filesystem::path liveDataDirectory;
+    if (!FindLiveDataDirectory(liveDataDirectory, error))
+        return false;
 
+    const bool uefi = IsUEFI();
     ReportProgress(0.02f, uefi ? "Режим загрузки: UEFI" : "Режим загрузки: Legacy BIOS");
+
+    // Сначала выполняем выбранный сценарий установки. Перезагрузка разрешена
+    // только если весь сценарий завершился успешно (result == true).
+    bool result = false;
 
     if (context.Mode == InstallMode::ReinstallWindows) {
         ReportProgress(0.05f, "Подготовка переустановки Windows...");
-
-        if (uefi) {
-            return InstallExistingWindows(context, error, progress);
-        }
-
-        return InstallLegacy(context, error, progress);
+        result = uefi
+            ? InstallExistingWindows(context, error, progress)
+            : InstallLegacy(context, error, progress);
     }
-
-    if (context.Mode == InstallMode::ReinstallWindowsAndFormatData) {
+    else if (context.Mode == InstallMode::ReinstallWindowsAndFormatData) {
         ReportProgress(0.05f, "Подготовка переустановки Windows и форматирования Data...");
 
         if (uefi) {
-            return InstallCleanDisk(context, error, progress);
+            result = InstallCleanDisk(context, error, progress);
         }
-
-        InstallerContext legacyContext = context;
-        legacyContext.WindowsPartitionSize = 120ull * 1024ull * 1024ull * 1024ull;
-        return InstallLegacyCleanDisk(legacyContext, error, progress);
+        else {
+            InstallerContext legacyContext = context;
+            legacyContext.WindowsPartitionSize = 120ull * 1024ull * 1024ull * 1024ull;
+            result = InstallLegacyCleanDisk(legacyContext, error, progress);
+        }
     }
-
-    if (context.Mode == InstallMode::CleanDisk) {
+    else if (context.Mode == InstallMode::CleanDisk) {
         ReportProgress(0.05f, "Подготовка полной очистки диска...");
-
-        if (uefi) {
-            return InstallCleanDisk(context, error, progress);
-        }
-
-        return InstallLegacyCleanDisk(context, error, progress);
+        result = uefi
+            ? InstallCleanDisk(context, error, progress)
+            : InstallLegacyCleanDisk(context, error, progress);
+    }
+    else {
+        error = "Неизвестный режим установки.";
+        return false;
     }
 
-    error = "Неизвестный режим установки.";
-    return false;
+    // Любая ошибка установки приводит к result == false — в этом случае
+    // не вызываем reboot и возвращаем ошибку интерфейсу.
+    if (!result)
+        return false;
+
+    ReportProgress(1.0f, "Установка завершена без ошибок. Перезагрузка...");
+
+    // Запрашиваем перезагрузку только после успешного завершения всех этапов.
+    if (!RunPrivilegedCommand("systemctl", {"reboot"}, error)) {
+        error = "Установка завершилась успешно, но не удалось запустить перезагрузку.\n\n" + error;
+        return false;
+    }
+
+    return true;
 }
 
 bool LinuxInstallationLauncher::InstallUEFI(const InstallerContext &context, std::string &error, const ProgressCallback &progress) {
@@ -1128,13 +1361,21 @@ bool LinuxInstallationLauncher::InstallExistingWindows(const InstallerContext &c
         return false;
     }
 
-    ReportProgress(0.97f, "Установка файлов первого запуска...");
+    ReportProgress(0.90f, "Установка файлов первого запуска...");
 
     const std::filesystem::path scriptsDirectory = executableDirectory / "assets" / "Scripts";
+
+    const std::filesystem::path script123 = scriptsDirectory / "123.cmd";
 
     const std::filesystem::path unattend = scriptsDirectory / "unattend.xml";
 
     const std::filesystem::path setupComplete = scriptsDirectory / "SetupComplete.cmd";
+
+    if (!std::filesystem::exists(script123)) {
+        error = "Не найден 123.cmd:\n\n" + script123.string();
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
 
     if (!std::filesystem::exists(unattend)) {
         error = "Не найден unattend.xml:\n\n" + unattend.string();
@@ -1230,6 +1471,21 @@ bool LinuxInstallationLauncher::InstallExistingWindows(const InstallerContext &c
     std::error_code removePsetupError;
     std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
 
+    if (!RunPrivilegedCommand(
+            "cp",
+            {script123.string(), (setupScriptsDirectory / "123.cmd").string()},
+            error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!std::filesystem::exists(setupScriptsDirectory / "123.cmd")) {
+        error = "123.cmd не был скопирован:\n\n" +
+                (setupScriptsDirectory / "123.cmd").string();
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
     if (!RunPrivilegedCommand("cp", {unattend.string(), (pantherDirectory / "unattend.xml").string()}, error)) {
         return false;
     }
@@ -1257,6 +1513,12 @@ bool LinuxInstallationLauncher::InstallExistingWindows(const InstallerContext &c
 
     //     return false;
     // }
+
+    ReportProgress(0.91f, "Копирование Drivers и Programs...");
+    if (!CopyPostInstallAssets(postInstallDirectory, progress, 0.91f, 0.985f, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
 
     ReportProgress(0.99f, "Завершение установки...");
 
@@ -1545,13 +1807,21 @@ bool LinuxInstallationLauncher::InstallExistingWindowsAndData(const InstallerCon
      * unattend.xml и SetupComplete.cmd НЕ копируем.
      * Создаём только config.json.
      */
-    ReportProgress(0.94f, "Создание конфигурации PostInstall...");
+    ReportProgress(0.90f, "Создание конфигурации PostInstall...");
 
     const std::filesystem::path scriptsDirectory = executableDirectory / "assets" / "Scripts";
+
+    const std::filesystem::path script123 = scriptsDirectory / "123.cmd";
 
     const std::filesystem::path unattend = scriptsDirectory / "unattend.xml";
 
     const std::filesystem::path setupComplete = scriptsDirectory / "SetupComplete.cmd";
+
+    if (!std::filesystem::exists(script123)) {
+        error = "Не найден 123.cmd:\n\n" + script123.string();
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
 
     if (!std::filesystem::exists(unattend)) {
         error = "Не найден unattend.xml:\n\n" + unattend.string();
@@ -1574,6 +1844,21 @@ bool LinuxInstallationLauncher::InstallExistingWindowsAndData(const InstallerCon
     const std::filesystem::path sysprepDirectory = windowsMount / "Windows" / "System32" / "Sysprep";
 
     if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!RunPrivilegedCommand(
+            "cp",
+            {script123.string(), (setupScriptsDirectory / "123.cmd").string()},
+            error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!std::filesystem::exists(setupScriptsDirectory / "123.cmd")) {
+        error = "123.cmd не был скопирован:\n\n" +
+                (setupScriptsDirectory / "123.cmd").string();
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
@@ -1676,6 +1961,12 @@ bool LinuxInstallationLauncher::InstallExistingWindowsAndData(const InstallerCon
     std::error_code removePsetupError;
     std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
 
+    ReportProgress(0.91f, "Копирование Drivers и Programs...");
+    if (!CopyPostInstallAssets(postInstallDirectory, progress, 0.91f, 0.985f, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
     ReportProgress(0.99f, "Завершение установки...");
 
     if (!RunPrivilegedCommand("umount", {windowsMount.string()}, error)) {
@@ -1725,14 +2016,10 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
 
     // Режим 2 всегда использует C: размером 120 GiB.
     // Режим 3 использует размер, выбранный пользователем.
-    const std::uint64_t windowsSize =
-        context.Mode == InstallMode::ReinstallWindowsAndFormatData
-            ? 120ull * GiB
-            : context.WindowsPartitionSize;
+    const std::uint64_t windowsSize = context.Mode == InstallMode::ReinstallWindowsAndFormatData ? 120ull * GiB : context.WindowsPartitionSize;
     const std::uint64_t windowsSectors = windowsSize / SECTOR_SIZE;
 
-    if (context.Mode != InstallMode::ReinstallWindowsAndFormatData &&
-        context.Mode != InstallMode::CleanDisk) {
+    if (context.Mode != InstallMode::ReinstallWindowsAndFormatData && context.Mode != InstallMode::CleanDisk) {
         error = "InstallCleanDisk вызван для неподдерживаемого режима.";
         return false;
     }
@@ -1754,9 +2041,7 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
     // lsblk -P сохраняет пустые поля и не сдвигает столбцы.
     std::string lsblkOutput;
     std::string commandError;
-    if (!RunCommandCapture("lsblk",
-                           {"-b", "-P", "-p", "-o", "NAME,TYPE,LABEL,PARTLABEL,PARTN,START,SIZE", disk},
-                           lsblkOutput, commandError)) {
+    if (!RunCommandCapture("lsblk", {"-b", "-P", "-p", "-o", "NAME,TYPE,LABEL,PARTLABEL,PARTN,START,SIZE", disk}, lsblkOutput, commandError)) {
         error = "Не удалось прочитать разметку диска. Установка остановлена.";
         return false;
     }
@@ -1785,7 +2070,8 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
             part.number = std::stoull(fields["PARTN"]);
             part.start = std::stoull(fields["START"]);
             part.sectors = std::stoull(fields["SIZE"]) / SECTOR_SIZE;
-        } catch (...) {
+        }
+        catch (...) {
             error = "Не удалось определить геометрию одного из разделов диска.";
             return false;
         }
@@ -1808,35 +2094,27 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
     }
 
     std::uint64_t writableStart = FIRST_LBA;
-    std::uint64_t writableEnd = diskSectors > GPT_BACKUP_SECTORS
-                                    ? diskSectors - GPT_BACKUP_SECTORS - 1
-                                    : 0;
+    std::uint64_t writableEnd = diskSectors > GPT_BACKUP_SECTORS ? diskSectors - GPT_BACKUP_SECTORS - 1 : 0;
     std::set<std::uint64_t> preservedNumbers;
     ExistingPart preservedSystem;
     bool hasPreservedSystem = false;
     bool amdZAtBeginning = false;
 
     if (hasAmdz) {
-        if (amdz.number == 0 || amdz.sectors == 0 ||
-            amdz.start + amdz.sectors > diskSectors - GPT_BACKUP_SECTORS) {
+        if (amdz.number == 0 || amdz.sectors == 0 || amdz.start + amdz.sectors > diskSectors - GPT_BACKUP_SECTORS) {
             error = "AMDZ найден, но его геометрия некорректна. Установка остановлена.";
             return false;
         }
 
         std::string pttypeOutput;
-        if (!RunCommandCapture("lsblk", {"-dn", "-o", "PTTYPE", disk}, pttypeOutput, commandError) ||
-            ToLower(pttypeOutput).find("gpt") == std::string::npos) {
+        if (!RunCommandCapture("lsblk", {"-dn", "-o", "PTTYPE", disk}, pttypeOutput, commandError) || ToLower(pttypeOutput).find("gpt") == std::string::npos) {
             error = "AMDZ найден, но диск не размечен GPT. AMDZ не будет затронут.";
             return false;
         }
 
         const std::uint64_t amdzEnd = amdz.start + amdz.sectors - 1;
-        const bool atBeginning = amdz.start <= AMDZ_DETECTION_RANGE_SECTORS &&
-                                 amdzEnd < diskSectors / 2;
-        const bool atEnd = amdzEnd >= (diskSectors > AMDZ_DETECTION_RANGE_SECTORS
-                                           ? diskSectors - AMDZ_DETECTION_RANGE_SECTORS
-                                           : 0) &&
-                           amdz.start >= diskSectors / 2;
+        const bool atBeginning = amdz.start <= AMDZ_DETECTION_RANGE_SECTORS && amdzEnd < diskSectors / 2;
+        const bool atEnd = amdzEnd >= (diskSectors > AMDZ_DETECTION_RANGE_SECTORS ? diskSectors - AMDZ_DETECTION_RANGE_SECTORS : 0) && amdz.start >= diskSectors / 2;
 
         if (atBeginning == atEnd) {
             error = "AMDZ находится не однозначно у начала или конца диска. "
@@ -1851,9 +2129,7 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
         std::uint64_t bestDistance = std::numeric_limits<std::uint64_t>::max();
 
         for (const auto &part : existingParts) {
-            if (part.number == amdz.number ||
-                part.sectors < MIN_PRESERVED_SYSTEM_SECTORS ||
-                part.sectors > MAX_PRESERVED_SYSTEM_SECTORS)
+            if (part.number == amdz.number || part.sectors < MIN_PRESERVED_SYSTEM_SECTORS || part.sectors > MAX_PRESERVED_SYSTEM_SECTORS)
                 continue;
 
             const std::uint64_t partEnd = part.start + part.sectors - 1;
@@ -1863,7 +2139,8 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
             if (partEnd < amdz.start) {
                 distance = amdz.start - partEnd - 1;
                 candidate = distance <= ADJACENCY_TOLERANCE_SECTORS;
-            } else if (part.start > amdzEnd) {
+            }
+            else if (part.start > amdzEnd) {
                 distance = part.start - amdzEnd - 1;
                 candidate = distance <= ADJACENCY_TOLERANCE_SECTORS;
             }
@@ -1887,7 +2164,8 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
                 writableStart = preservedSystem.start + preservedSystem.sectors;
             }
             writableStart = ((writableStart + ALIGNMENT_SECTORS - 1) / ALIGNMENT_SECTORS) * ALIGNMENT_SECTORS;
-        } else {
+        }
+        else {
             // На конце диска разделы Windows создаются перед AMDZ и любым
             // сохранённым разделом, который расположен непосредственно перед AMDZ.
             writableEnd = amdz.start - 1;
@@ -1899,15 +2177,12 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
 
         std::string amdzMountOutput;
         if (RunCommandCapture("findmnt", {"-rn", "-S", amdz.device}, amdzMountOutput, commandError)) {
-            error = "AMDZ смонтирован:\n\n" + amdzMountOutput +
-                    "\n\nРазмонтируйте AMDZ перед установкой.";
+            error = "AMDZ смонтирован:\n\n" + amdzMountOutput + "\n\nРазмонтируйте AMDZ перед установкой.";
             return false;
         }
-
     }
 
-    if (writableEnd <= writableStart ||
-        writableEnd - writableStart + 1 <= EFI_SECTORS + MSR_SECTORS + windowsSectors + MIN_DATA_SECTORS) {
+    if (writableEnd <= writableStart || writableEnd - writableStart + 1 <= EFI_SECTORS + MSR_SECTORS + windowsSectors + MIN_DATA_SECTORS) {
         error = "Недостаточно места между защищёнными разделами для EFI, C: и D:.";
         return false;
     }
@@ -1926,8 +2201,7 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
 
         std::string partMounts;
         if (RunCommandCapture("findmnt", {"-rn", "-S", part.device}, partMounts, commandError)) {
-            error = "Раздел целевого диска смонтирован:\n\n" + part.device + "\n" + partMounts +
-                    "\n\nРазмонтируйте его перед установкой.";
+            error = "Раздел целевого диска смонтирован:\n\n" + part.device + "\n" + partMounts + "\n\nРазмонтируйте его перед установкой.";
             return false;
         }
     }
@@ -1957,9 +2231,7 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
     const std::filesystem::path isoPath = "/Windows10.iso";
     std::error_code isoError;
     if (!std::filesystem::exists(isoPath, isoError)) {
-        error = isoError
-            ? "Не удалось проверить ISO Windows:\n\n" + isoPath.string() + "\n\n" + isoError.message()
-            : "Не найден ISO Windows:\n\n" + isoPath.string();
+        error = isoError ? "Не удалось проверить ISO Windows:\n\n" + isoPath.string() + "\n\n" + isoError.message() : "Не найден ISO Windows:\n\n" + isoPath.string();
         return false;
     }
 
@@ -1968,12 +2240,12 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
     ReportProgress(0.10f, hasAmdz ? "Сохранение AMDZ и найденного соседнего служебного раздела, очистка остальных разделов..." : "Подготовка чистой разметки...");
 
     if (!hasAmdz) {
-        if (!RunPrivilegedCommand("sgdisk", {"--zap-all", disk}, error) ||
-            !RunPrivilegedCommand("sgdisk", {"-o", disk}, error))
+        if (!RunPrivilegedCommand("sgdisk", {"--zap-all", disk}, error) || !RunPrivilegedCommand("sgdisk", {"-o", disk}, error))
             return false;
         existingParts.clear();
         preservedNumbers.clear();
-    } else {
+    }
+    else {
         for (const auto &part : existingParts) {
             if (preservedNumbers.count(part.number))
                 continue;
@@ -2007,23 +2279,18 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
         return false;
     }
 
-    const auto AddGptPartition = [&](unsigned int number, std::uint64_t first, std::uint64_t last,
-                                     const std::string &type, const std::string &name) -> bool {
-        return RunPrivilegedCommand("sgdisk",
-                                    {"-n", std::to_string(number) + ":" + std::to_string(first) + ":" + std::to_string(last),
-                                     "-t", std::to_string(number) + ":" + type,
-                                     "-c", std::to_string(number) + ":" + name, disk},
-                                    error);
+    const auto AddGptPartition = [&](unsigned int number, std::uint64_t first, std::uint64_t last, const std::string &type, const std::string &name) -> bool {
+        return RunPrivilegedCommand(
+            "sgdisk",
+            {"-n", std::to_string(number) + ":" + std::to_string(first) + ":" + std::to_string(last), "-t", std::to_string(number) + ":" + type, "-c", std::to_string(number) + ":" + name, disk},
+            error);
     };
 
-    if (!AddGptPartition(newNumbers[0], efiStart, efiEnd, "EF00", "EFI") ||
-        !AddGptPartition(newNumbers[1], msrStart, msrEnd, "0C01", "MSR") ||
-        !AddGptPartition(newNumbers[2], windowsStart, windowsEnd, "0700", "Windows") ||
-        !AddGptPartition(newNumbers[3], dataStart, dataEnd, "0700", "Data"))
+    if (!AddGptPartition(newNumbers[0], efiStart, efiEnd, "EF00", "EFI") || !AddGptPartition(newNumbers[1], msrStart, msrEnd, "0C01", "MSR") ||
+        !AddGptPartition(newNumbers[2], windowsStart, windowsEnd, "0700", "Windows") || !AddGptPartition(newNumbers[3], dataStart, dataEnd, "0700", "Data"))
         return false;
 
-    if (!RunPrivilegedCommand("partprobe", {disk}, error) ||
-        !RunPrivilegedCommand("udevadm", {"settle"}, error))
+    if (!RunPrivilegedCommand("partprobe", {disk}, error) || !RunPrivilegedCommand("udevadm", {"settle"}, error))
         return false;
     usleep(500000);
 
@@ -2037,14 +2304,10 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
     const std::string dataPartition = PartitionDevice(newNumbers[3]);
 
     std::cout << "\n========================================\n"
-              << " UEFI installation / " << (context.Mode == InstallMode::CleanDisk ? "manual partitioning" : "C: 120 GiB, rest D:")
-              << "\nTarget: " << disk
-              << "\nAMDZ: " << (hasAmdz ? amdz.device + " (preserved)" : "not found")
-              << "\nPreserved system partition: " << (hasPreservedSystem ? preservedSystem.device + " (preserved)" : "none")
-              << "\nAMDZ position: " << (hasAmdz ? (amdZAtBeginning ? "beginning; install after AMDZ" : "end; install before AMDZ") : "none")
-              << "\nWritable start LBA: " << writableStart
-              << "\nWritable end LBA: " << writableEnd
-              << "\nC: " << static_cast<double>(windowsSize) / MiB << " MiB"
+              << " UEFI installation / " << (context.Mode == InstallMode::CleanDisk ? "manual partitioning" : "C: 120 GiB, rest D:") << "\nTarget: " << disk
+              << "\nAMDZ: " << (hasAmdz ? amdz.device + " (preserved)" : "not found") << "\nPreserved system partition: " << (hasPreservedSystem ? preservedSystem.device + " (preserved)" : "none")
+              << "\nAMDZ position: " << (hasAmdz ? (amdZAtBeginning ? "beginning; install after AMDZ" : "end; install before AMDZ") : "none") << "\nWritable start LBA: " << writableStart
+              << "\nWritable end LBA: " << writableEnd << "\nC: " << static_cast<double>(windowsSize) / MiB << " MiB"
               << "\nD: " << static_cast<double>((dataEnd - dataStart + 1) * SECTOR_SIZE) / MiB << " MiB\n"
               << "========================================\n";
 
@@ -2186,13 +2449,21 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
      * unattend.xml и SetupComplete.cmd пока НЕ копируем:
      * текущая рабочая установка Windows проходит OOBE без них.
      */
-    ReportProgress(0.94f, "Создание config.json...");
+    ReportProgress(0.90f, "Создание config.json...");
 
     const std::filesystem::path scriptsDirectory = executableDirectory / "assets" / "Scripts";
+
+    const std::filesystem::path script123 = scriptsDirectory / "123.cmd";
 
     const std::filesystem::path unattend = scriptsDirectory / "unattend.xml";
 
     const std::filesystem::path setupComplete = scriptsDirectory / "SetupComplete.cmd";
+
+    if (!std::filesystem::exists(script123)) {
+        error = "Не найден 123.cmd:\n\n" + script123.string();
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
 
     if (!std::filesystem::exists(unattend)) {
         error = "Не найден unattend.xml:\n\n" + unattend.string();
@@ -2215,6 +2486,21 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
     const std::filesystem::path sysprepDirectory = windowsMount / "Windows" / "System32" / "Sysprep";
 
     if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!RunPrivilegedCommand(
+            "cp",
+            {script123.string(), (setupScriptsDirectory / "123.cmd").string()},
+            error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!std::filesystem::exists(setupScriptsDirectory / "123.cmd")) {
+        error = "123.cmd не был скопирован:\n\n" +
+                (setupScriptsDirectory / "123.cmd").string();
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
@@ -2316,6 +2602,12 @@ bool LinuxInstallationLauncher::InstallCleanDisk(const InstallerContext &context
 
     std::error_code removePsetupError;
     std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
+
+    ReportProgress(0.91f, "Копирование Drivers и Programs...");
+    if (!CopyPostInstallAssets(postInstallDirectory, progress, 0.91f, 0.985f, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
 
     ReportProgress(0.99f, "Завершение установки...");
 
@@ -2461,8 +2753,7 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
         return false;
     }
     const std::string lowerLabels = ToLower(labelOutput);
-    if (lowerLabels.find("label=\"amdz\"") != std::string::npos ||
-        lowerLabels.find("partlabel=\"amdz\"") != std::string::npos) {
+    if (lowerLabels.find("label=\"amdz\"") != std::string::npos || lowerLabels.find("partlabel=\"amdz\"") != std::string::npos) {
         error = "На диске обнаружен AMDZ. Полная установка в Legacy BIOS/MBR запрещена, "
                 "поскольку она может повредить AMDZ. Загрузите установщик в режиме UEFI.";
         return false;
@@ -2626,13 +2917,21 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
         return false;
     }
 
-    ReportProgress(0.97f, "Создание конфигурации PostInstall...");
+    ReportProgress(0.90f, "Создание конфигурации PostInstall...");
 
     const std::filesystem::path scriptsDirectory = executableDirectory / "assets" / "Scripts";
+
+    const std::filesystem::path script123 = scriptsDirectory / "123.cmd";
 
     const std::filesystem::path unattend = scriptsDirectory / "unattend.xml";
 
     const std::filesystem::path setupComplete = scriptsDirectory / "SetupComplete.cmd";
+
+    if (!std::filesystem::exists(script123)) {
+        error = "Не найден 123.cmd:\n\n" + script123.string();
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
 
     if (!std::filesystem::exists(unattend)) {
         error = "Не найден unattend.xml:\n\n" + unattend.string();
@@ -2655,6 +2954,21 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
     const std::filesystem::path sysprepDirectory = windowsMount / "Windows" / "System32" / "Sysprep";
 
     if (!RunPrivilegedCommand("mkdir", {"-p", pantherDirectory.string(), sysprepDirectory.string(), setupScriptsDirectory.string()}, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!RunPrivilegedCommand(
+            "cp",
+            {script123.string(), (setupScriptsDirectory / "123.cmd").string()},
+            error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!std::filesystem::exists(setupScriptsDirectory / "123.cmd")) {
+        error = "123.cmd не был скопирован:\n\n" +
+                (setupScriptsDirectory / "123.cmd").string();
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
@@ -2756,6 +3070,12 @@ bool LinuxInstallationLauncher::InstallLegacyCleanDisk(const InstallerContext &c
 
     std::error_code removePsetupError;
     std::filesystem::remove(temporaryPsetupCmd, removePsetupError);
+
+    ReportProgress(0.91f, "Копирование Drivers и Programs...");
+    if (!CopyPostInstallAssets(postInstallDirectory, progress, 0.91f, 0.985f, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
 
     ReportProgress(0.99f, "Завершение установки...");
 
@@ -3013,13 +3333,21 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
     std::cout << "\nПроверка Legacy-загрузчика прошла успешно.\n";
 
     // Файлы первого запуска.
-    ReportProgress(0.97f, "Установка файлов первого запуска...");
+    ReportProgress(0.90f, "Установка файлов первого запуска...");
 
     const std::filesystem::path scriptsDirectory = executableDirectory / "assets" / "Scripts";
+
+    const std::filesystem::path script123 = scriptsDirectory / "123.cmd";
 
     const std::filesystem::path unattend = scriptsDirectory / "unattend.xml";
 
     const std::filesystem::path setupComplete = scriptsDirectory / "SetupComplete.cmd";
+
+    if (!std::filesystem::exists(script123)) {
+        error = "Не найден 123.cmd:\n\n" + script123.string();
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
 
     const std::filesystem::path pantherDirectory = windowsMount / "Windows" / "Panther";
 
@@ -3051,6 +3379,21 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
     }
 
     // unattend.xml -> Panther
+    if (!RunPrivilegedCommand(
+            "cp",
+            {script123.string(), (setupScriptsDirectory / "123.cmd").string()},
+            error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
+    if (!std::filesystem::exists(setupScriptsDirectory / "123.cmd")) {
+        error = "123.cmd не был скопирован:\n\n" +
+                (setupScriptsDirectory / "123.cmd").string();
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
+        return false;
+    }
+
     if (!RunPrivilegedCommand("cp", {unattend.string(), (pantherDirectory / "unattend.xml").string()}, error)) {
 
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
@@ -3138,6 +3481,12 @@ bool LinuxInstallationLauncher::InstallLegacy(const InstallerContext &context, s
 
         RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
 
+        return false;
+    }
+
+    ReportProgress(0.91f, "Копирование Drivers и Programs...");
+    if (!CopyPostInstallAssets(postInstallDirectory, progress, 0.91f, 0.985f, error)) {
+        RunPrivilegedCommand("umount", {windowsMount.string()}, cleanupError);
         return false;
     }
 
