@@ -1,6 +1,9 @@
+mod deploy;
 mod disks;
+mod media;
 mod model;
 mod partition;
+mod runtime;
 #[tauri::command]
 fn preview_config(settings: model::Settings) -> Result<serde_json::Value, String> {
     settings.post_install()
