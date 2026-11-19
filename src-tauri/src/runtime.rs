@@ -85,3 +85,67 @@ mod tests {
         assert_eq!(run("/bin/cat", &[], Some("payload")).unwrap(), "payload");
     }
 }
+
+pub fn progress(program: &str, args: &[&str], report: &dyn Fn(f32)) -> Result<(), String> {
+    let root = run("id", &["-u"], None)?.trim() == "0";
+    let mut command = Command::new(if root { program } else { "pkexec" });
+    if !root {
+        command.arg(program);
+    }
+    let mut child = command
+        .args(args)
+        .env("LC_ALL", "C")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let mut stderr = child.stderr.take().ok_or("stderr unavailable")?;
+    let reader = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = stderr.read_to_string(&mut s);
+        s
+    });
+    let mut output = child.stdout.take().ok_or("stdout unavailable")?;
+    let mut byte = [0];
+    let mut line = Vec::new();
+    while output.read(&mut byte).map_err(|e| e.to_string())? > 0 {
+        if byte[0] == b'\r' || byte[0] == b'\n' {
+            if let Some(p) = percentage(&String::from_utf8_lossy(&line)) {
+                report(p);
+            }
+            line.clear();
+        } else {
+            line.push(byte[0]);
+            if line.len() > 65536 {
+                line.clear();
+            }
+        }
+    }
+    let status = child.wait().map_err(|e| e.to_string())?;
+    let stderr = reader.join().map_err(|_| "stderr reader failed")?;
+    if !status.success() {
+        return Err(format!("{program} ({status}): {stderr}"));
+    }
+    report(1.0);
+    Ok(())
+}
+fn percentage(line: &str) -> Option<f32> {
+    let end = line.find('%')?;
+    let start = line[..end]
+        .rfind(|c: char| !c.is_ascii_digit() && c != '.')
+        .map_or(0, |i| i + 1);
+    line[start..end]
+        .parse::<f32>()
+        .ok()
+        .map(|p| (p / 100.0).clamp(0.0, 1.0))
+}
+#[cfg(test)]
+mod progress_tests {
+    use super::*;
+    #[test]
+    fn reads_wim_and_rsync_percentages() {
+        assert_eq!(percentage("Applying: 24%"), Some(0.24));
+        assert_eq!(percentage(" 1,234  99%  1MB/s"), Some(0.99));
+    }
+}

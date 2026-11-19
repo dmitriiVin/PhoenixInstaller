@@ -24,7 +24,14 @@ async function render() {
   if(step===3) {if(state.mode==='clean_disk'){const i=input('Размер Windows, ГиБ','windows_size_gb','number');i.min='100';}else element('p',state.mode==='reinstall_windows'?'Используется существующий раздел Windows.':'Размер Windows: 120 ГиБ.');input('Индекс редакции в образе Windows','edition','number').min='1';}
   if(step===4) {input('Устанавливать драйверы','drivers','checkbox'); for(const p of catalog){const l=element('label',`${p.name} — ${p.description}`);const i=element('input','',l);i.type='checkbox';i.checked=state.packages.includes(p.id);i.onchange=()=>{state.packages=state.packages.filter(id=>id!==p.id);if(i.checked)state.packages.push(p.id);};}}
   if(step===5) {input('Изменить имя компьютера','change_name','checkbox');input('Имя компьютера','computer_name').maxLength=15;}
-  if(step===6) {element('pre',JSON.stringify(state,null,2));try{const config=await invoke('preview_config',{settings:state});if(state.mode!=='reinstall_windows'){const plan=await invoke('preview_partition_plan',{settings:state});element('h3','План разметки (предпросмотр)');element('pre',JSON.stringify(plan,null,2));}element('h3','Конфигурация после установки');element('pre',JSON.stringify(config,null,2));element('p','Запуск установки станет доступен после переноса установочного движка.');}catch(e){error.textContent=String(e);}}
+  if(step===6) {element('pre',JSON.stringify(state,null,2));try{const config=await invoke('preview_config',{settings:state});if(state.mode!=='reinstall_windows'){const plan=await invoke('preview_partition_plan',{settings:state});element('h3','План разметки (предпросмотр)');element('pre',JSON.stringify(plan,null,2));}element('h3','Конфигурация после установки');element('pre',JSON.stringify(config,null,2));const start=element('button','Начать установку');start.onclick=async()=>{
+ const back=document.querySelector('#back');start.disabled=true;back.disabled=true;
+ const bar=element('progress');bar.max=1;bar.value=0;const status=element('p','Подготовка установки');
+ let unlisten;
+ try{unlisten=await window.__TAURI__.event.listen('install-progress',e=>{bar.value=e.payload.progress;status.textContent=e.payload.status;});await invoke('start_install',{settings:state});status.textContent='Установка завершена';}
+ catch(e){error.textContent=String(e);start.disabled=false;back.disabled=false;}
+ finally{if(unlisten)unlisten();}
+};}catch(e){error.textContent=String(e);}}
 }
 document.querySelector('#back').onclick=()=>{if(step>0){step--;render();}};
 document.querySelector('#next').onclick=async()=>{if(step===1&&!state.device){error.textContent='Выберите диск';return;}if(step===5){try{await invoke('preview_config',{settings:state});}catch(e){error.textContent=String(e);return;}}if(step<6){step++;render();}};

@@ -31,7 +31,7 @@ pub fn enumerate() -> Result<Value, String> {
     if !cfg!(target_os = "linux") {
         return Err("Обнаружение дисков доступно в Linux Live.".into());
     }
-    let output=std::process::Command::new("lsblk").args(["--json","--bytes","--output","NAME,PATH,SIZE,MODEL,TYPE,FSTYPE,LABEL,MOUNTPOINTS,TRAN,ROTA,PTTYPE,PARTTYPE,PARTN,START,PARTLABEL"]).output().map_err(|e|e.to_string())?;
+    let output=std::process::Command::new("lsblk").args(["--json","--bytes","--output","NAME,PATH,SIZE,MODEL,TYPE,FSTYPE,LABEL,MOUNTPOINTS,TRAN,ROTA,PTTYPE,PARTTYPE,PARTN,START,PARTLABEL,LOG-SEC"]).output().map_err(|e|e.to_string())?;
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).into_owned());
     }

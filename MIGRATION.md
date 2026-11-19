@@ -1,26 +1,11 @@
-# Rust + Tauri migration (in progress)
+# Migration status
 
-Run `npm ci` then `npm run dev`. Rust and Tauri 2 system prerequisites are required.
-Run Rust checks with `cargo test --manifest-path src-tauri/Cargo.toml`.
+The Tauri entry point is `src-tauri/src/main.rs`; the Rust installation orchestrator is `install.rs`. The Tauri build does not compile or call the previous C++ application.
 
-Implemented:
-- Seven-stage Russian wizard: welcome, disk, installation mode, Windows size/image index, packages/drivers, computer settings, confirmation.
-- Embedded package catalog and selection state across wizard navigation.
-- Linux disk enumeration and partition role detection matching the C++ heuristics.
-- Backend settings validation and post-install JSON compatible with the Linux launcher's CreatePostInstallConfig.
-- Read-only GPT partition plan with AMDZ and adjacent service partition preservation, boundary checks, free partition-number allocation, fixed 120 GiB mode and manual size mode.
-- Twelve Rust tests covering configuration, validation, partition roles, partition geometry, process execution and nested Ventoy detection.
-- Rust modules for command execution, mount cleanup, live media discovery, WIM application, UEFI/BIOS boot configuration and payload staging (integration in progress).
+Implemented in Rust: disk enumeration/partition roles, settings and package validation, post-install configuration, GPT/AMDZ partition planning, Legacy/MBR creation, process execution/elevation, Ventoy/Data discovery, mount cleanup, WIM application, UEFI/BIOS boot configuration and verification, payload staging, reboot, async Tauri invocation and progress events. The Russian wizard supports all three installation modes, partition size, image edition, programs, drivers and computer name.
 
-Not yet ported:
-- Installation execution: UEFI/Legacy commands, mounting, applying WIM, BCD, payload staging, progress, cleanup and reboot.
-- Integration of live media discovery and deployment into the installation orchestrator.
-- Windows target packaging and Linux Live integration verification.
+PSetup.exe, bcd-sys and ms-sys remain external binaries, as requested. PSetup's configuration format and staged files follow the previous Linux implementation.
 
-The confirmation page previews configuration and partition geometry only. No destructive installation commands are exposed. Existing C++ and scripts remain the functional reference; this branch is not yet a feature-complete replacement.
+Validation: Rust unit tests and local compilation; Linux CI workflow added. Remaining verification: disposable Linux Live VM runs for UEFI and Legacy, all modes, AMDZ at both disk ends, failures during WIM/copying, boot into the installed Windows and PSetup execution. These runtime scenarios cannot be verified on the macOS host.
 
-Reference: https://v2.tauri.app/start/
-
-## External components (retained unchanged)
-
-`assets/PSetup.exe`, `bcd-sys-2.4-x86_64.AppImage` and `ms-sys` remain prebuilt external dependencies. They are copied or invoked by the Rust installer; rewriting their implementations is outside migration scope. PSetup continues to consume the existing post-install configuration format.
+The C++ source and CMake files remain only as a reference. Build the new application with `npm run build` (see README.md).

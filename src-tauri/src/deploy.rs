@@ -25,10 +25,10 @@ pub fn image(
         return Err("В ISO отсутствует sources/install.wim".into());
     }
     report(0.3, "Применение образа Windows");
-    privileged(
+    crate::runtime::progress(
         "wimlib-imagex",
         &["apply", &wim, &settings.edition.to_string(), windows],
-        None,
+        &|fraction| report(0.3 + fraction * 0.5, "Применение образа Windows"),
     )?;
     mounts.unmount(iso)?;
     mounts.mount(&["-t", "ntfs3", windows, win], win)?;
@@ -167,7 +167,7 @@ pub fn stage(
     )?;
     for (progress, folder) in [(0.91, "Drivers"), (0.95, "Programs")] {
         report(progress, &format!("Копирование {folder}"));
-        privileged(
+        crate::runtime::progress(
             "rsync",
             &[
                 "-a",
@@ -175,7 +175,12 @@ pub fn stage(
                 live.join(folder).to_str().ok_or("Некорректный путь")?,
                 &format!("{}/", post.display()),
             ],
-            None,
+            &|fraction| {
+                report(
+                    progress + fraction * 0.035,
+                    &format!("Копирование {folder}"),
+                )
+            },
         )?;
     }
     Ok(())

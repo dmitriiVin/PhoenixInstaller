@@ -118,7 +118,7 @@ pub fn plan(
         .checked_add(windows)
         .and_then(|n| n.checked_add(GIB))
         .ok_or_else(fail)?;
-    if end <= start || end - start + 1 <= needed {
+    if end <= start || end - start < needed {
         return Err("Недостаточно места для EFI, Windows и Data".into());
     }
     let numbers: Vec<_> = (1..=128)
@@ -211,5 +211,42 @@ mod tests {
     #[test]
     fn insufficient_space_rejected() {
         assert!(plan(100 * GIB, true, &[], 150).is_err());
+    }
+}
+
+#[cfg(test)]
+mod edge_tests {
+    use super::*;
+    fn amdz(start: u64) -> Partition {
+        Partition {
+            number: 4,
+            start,
+            sectors: GIB,
+            label: "AMDZ".into(),
+            part_label: String::new(),
+        }
+    }
+    #[test]
+    fn end_amdz_is_outside_new_partitions() {
+        let a = amdz(499 * GIB - 2048);
+        let p = plan(500 * GIB, true, &[a.clone()], 150).unwrap();
+        assert!(p.preserved.contains(&4));
+        assert!(p.create.iter().all(|p| p.end < a.start));
+    }
+    #[test]
+    fn duplicate_amdz_rejected() {
+        assert!(plan(500 * GIB, true, &[amdz(2048), amdz(499 * GIB - 2048)], 150).is_err());
+    }
+    #[test]
+    fn overlapping_partitions_rejected() {
+        let a = amdz(2048);
+        let mut b = a.clone();
+        b.number = 5;
+        b.label.clear();
+        assert!(plan(500 * GIB, true, &[a, b], 150).is_err());
+    }
+    #[test]
+    fn legacy_amdz_rejected() {
+        assert!(plan(500 * GIB, false, &[amdz(2048)], 150).is_err());
     }
 }
