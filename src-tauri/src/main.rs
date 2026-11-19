@@ -123,5 +123,5 @@ fn main() {
             start_install
         ])
         .run(tauri::generate_context!())
-        .expect("Unable to run Phoenix Installer");
+        .expect("Unable to run Windows Installer");
 }

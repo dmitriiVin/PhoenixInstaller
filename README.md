@@ -1,4 +1,4 @@
-# Phoenix Installer — Rust + Tauri
+# Windows Installer — Rust + Tauri
 
 Linux Live installer for Windows. The application backend is Rust and the desktop interface uses Tauri 2 with local HTML/CSS/JavaScript.
 
